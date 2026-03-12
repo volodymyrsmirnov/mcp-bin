@@ -10,13 +10,15 @@ import (
 	"github.com/volodymyrsmirnov/mcp-bin/internal/compile"
 	"github.com/volodymyrsmirnov/mcp-bin/internal/config"
 	mcpclient "github.com/volodymyrsmirnov/mcp-bin/internal/mcp"
+	"github.com/volodymyrsmirnov/mcp-bin/internal/version"
 )
 
 // BuildApp creates the CLI application.
 func BuildApp(cfg *config.Config, manifest *mcpclient.Manifest, compiledMode bool) *ucli.Command {
 	app := &ucli.Command{
-		Name:  "mcp-bin",
-		Usage: "Turn MCP server tools into CLI commands",
+		Name:    "mcp-bin",
+		Usage:   "Turn MCP server tools into CLI commands",
+		Version: version.String(),
 		Flags: []ucli.Flag{
 			&ucli.BoolFlag{
 				Name:  "json",

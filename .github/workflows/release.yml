@@ -24,9 +24,9 @@ jobs:
           if [ -z "$latest" ]; then
             echo "tag=v0.1.0" >> "$GITHUB_OUTPUT"
           else
-            major=$(echo "$latest" | cut -d. -f1)
-            minor=$(echo "$latest" | cut -d. -f2)
-            echo "tag=${major}.$((minor + 1)).0" >> "$GITHUB_OUTPUT"
+            patch=$(echo "$latest" | cut -d. -f3)
+            prefix=$(echo "$latest" | cut -d. -f1-2)
+            echo "tag=${prefix}.$((patch + 1))" >> "$GITHUB_OUTPUT"
           fi
 
   build:
@@ -62,7 +62,15 @@ jobs:
           CGO_ENABLED: "0"
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
-        run: go build -ldflags="-s -w" -o mcp-bin-${{ matrix.suffix }} ./cmd/mcp-bin/
+        run: |
+          VERSION="${{ needs.version.outputs.tag }}"
+          COMMIT="$(git rev-parse --short HEAD)"
+          DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          LDFLAGS="-s -w"
+          LDFLAGS="$LDFLAGS -X github.com/volodymyrsmirnov/mcp-bin/internal/version.Version=$VERSION"
+          LDFLAGS="$LDFLAGS -X github.com/volodymyrsmirnov/mcp-bin/internal/version.Commit=$COMMIT"
+          LDFLAGS="$LDFLAGS -X github.com/volodymyrsmirnov/mcp-bin/internal/version.Date=$DATE"
+          go build -ldflags="$LDFLAGS" -o mcp-bin-${{ matrix.suffix }} ./cmd/mcp-bin/
 
       - uses: actions/upload-artifact@v4
         with:
