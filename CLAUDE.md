@@ -44,6 +44,8 @@ schema/               — JSON schema for config file validation
 
 **Compile**: config → `mcp.IntrospectAll` (parallel connect+ListTools per server) → `compile.CreateZipArchive` → append zip to binary copy
 
+**Validate**: config → `validate.Run` → check env vars, commands/URLs, files; optionally `mcp.Connect` + `ListTools` with `--connect`
+
 **Skill**: config → `mcp.IntrospectAll` → `skill.Generate` → markdown to stdout
 
 **Compiled mode**: `embed.DetectEmbeddedZip` → `embed.ExtractToCache` → `config.LoadCompiledConfig` → `cli.BuildApp` with manifest → urfave/cli flag parsing → `mcp.Connect` → `mcp.CallTool`
