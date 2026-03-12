@@ -80,6 +80,7 @@ EOF
 ./mcp-bin run --config config.json <server> <tool> --help  # show tool help
 ./mcp-bin run --config config.json <server> <tool> [args]  # call tool
 ./mcp-bin compile --config config.json [--output FILE]     # compile binary
+./mcp-bin validate --config config.json [--connect]        # validate config
 ./mcp-bin skill --config config.json [--name NAME] [--description DESC]  # generate skill doc
 ```
 
@@ -89,6 +90,7 @@ EOF
 ./my-tools <server> --help
 ./my-tools <server> <tool> --help
 ./my-tools <server> <tool> [args]
+./my-tools validate [--connect]                            # validate config
 ./my-tools skill [--name NAME] [--description DESC]       # generate skill doc
 ```
 
@@ -122,6 +124,15 @@ The compiled binary:
 - Has no `compile` command
 - Extracts embedded data to `~/.cache/mcp-bin/` on first run
 - Resolves `${VAR}` from environment at runtime, falling back to compile-time values
+
+## Validate Command
+
+```bash
+./mcp-bin validate --config config.json
+./mcp-bin validate --config config.json --connect
+```
+
+Checks configuration health: config syntax, environment variable resolution, command/URL validity, and file existence. Add `--connect` to also test live server connectivity (connects, lists tools, applies filters). Available in both dev and compiled modes.
 
 ## Skill Command
 
