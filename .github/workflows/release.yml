@@ -1,7 +1,7 @@
 name: Release
 
 on:
-  workflow_dispatch: 
+  workflow_dispatch:
   push:
     branches: [main]
 
@@ -78,8 +78,30 @@ jobs:
           name: mcp-bin-${{ matrix.suffix }}
           path: mcp-bin-${{ matrix.suffix }}
 
+  universal:
+    needs: build
+    runs-on: macos-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: mcp-bin-darwin-amd64
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: mcp-bin-darwin-arm64
+
+      - name: Create universal binary
+        run: |
+          chmod +x mcp-bin-darwin-amd64 mcp-bin-darwin-arm64
+          lipo -create -output mcp-bin-osx-universal mcp-bin-darwin-amd64 mcp-bin-darwin-arm64
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mcp-bin-osx-universal
+          path: mcp-bin-osx-universal
+
   release:
-    needs: [version, build]
+    needs: [version, build, universal]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -93,13 +115,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          rm -f artifacts/mcp-bin-darwin-amd64 artifacts/mcp-bin-darwin-arm64
           gh release create "${{ needs.version.outputs.tag }}" \
             --title "${{ needs.version.outputs.tag }}" \
             --generate-notes \
             artifacts/*
 
   homebrew:
-    needs: [version, build]
+    needs: [version, build, universal]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -113,8 +136,7 @@ jobs:
         env:
           VERSION: ${{ needs.version.outputs.tag }}
         run: |
-          SHA_DARWIN_AMD64=$(sha256sum artifacts/mcp-bin-darwin-amd64 | cut -d' ' -f1)
-          SHA_DARWIN_ARM64=$(sha256sum artifacts/mcp-bin-darwin-arm64 | cut -d' ' -f1)
+          SHA_OSX=$(sha256sum artifacts/mcp-bin-osx-universal | cut -d' ' -f1)
           SHA_LINUX_AMD64=$(sha256sum artifacts/mcp-bin-linux-amd64 | cut -d' ' -f1)
           SHA_LINUX_ARM64=$(sha256sum artifacts/mcp-bin-linux-arm64 | cut -d' ' -f1)
           REPO="https://github.com/volodymyrsmirnov/mcp-bin/releases/download/${VERSION}"
@@ -137,14 +159,8 @@ jobs:
             license "MIT"
 
             on_macos do
-              on_arm do
-                url "${REPO}/mcp-bin-darwin-arm64"
-                sha256 "${SHA_DARWIN_ARM64}"
-              end
-              on_intel do
-                url "${REPO}/mcp-bin-darwin-amd64"
-                sha256 "${SHA_DARWIN_AMD64}"
-              end
+              url "${REPO}/mcp-bin-osx-universal"
+              sha256 "${SHA_OSX}"
             end
 
             on_linux do
