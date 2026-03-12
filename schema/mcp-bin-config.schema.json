@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/volodymyrsmirnov/mcp-bin/schema/mcp-bin-config.schema.json",
+  "title": "mcp-bin configuration",
+  "description": "Configuration file for mcp-bin. Defines MCP servers to connect to and files/directories to embed in compiled binaries. Supports JSON (.json) and YAML (.yaml/.yml) formats.",
+  "type": "object",
+  "properties": {
+    "files": {
+      "type": "array",
+      "description": "File and directory paths to embed in compiled binaries. Directories are recursively included. At runtime, embedded content is extracted to a cache directory (~/.cache/mcp-bin/<hash>/dirs/) and paths in the config are automatically patched to point to the extracted location.",
+      "items": {
+        "type": "string",
+        "description": "Absolute path to a file or directory to embed."
+      },
+      "default": []
+    },
+    "servers": {
+      "type": "object",
+      "description": "Map of server names to their configurations. Each key becomes a CLI subcommand name (e.g., 'my-server' becomes './mcp-bin my-server <tool>').",
+      "additionalProperties": {
+        "$ref": "#/$defs/serverConfig"
+      }
+    }
+  },
+  "required": ["servers"],
+  "additionalProperties": false,
+  "$defs": {
+    "serverConfig": {
+      "type": "object",
+      "description": "Configuration for a single MCP server. Must specify either 'command' for local stdio-based servers or 'url' for remote HTTP-based servers, but not both.",
+      "properties": {
+        "command": {
+          "type": "string",
+          "description": "Executable command to start a local MCP server using stdio transport. The server process is spawned as a child process and communicates via stdin/stdout."
+        },
+        "args": {
+          "type": "array",
+          "description": "Command-line arguments passed to the server command.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "env": {
+          "type": "object",
+          "description": "Environment variables passed to the server process. Values support ${VAR} syntax for substitution from the host environment. In compiled binaries, the original variable name is preserved so it can be overridden at runtime.",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "cwd": {
+          "type": "string",
+          "description": "Working directory for the server process. In compiled binaries, this path is automatically patched to point to the extracted cache location if it matches an embedded file path."
+        },
+        "url": {
+          "type": "string",
+          "description": "URL endpoint for a remote MCP server. The client first attempts Streamable HTTP transport, then falls back to SSE (Server-Sent Events) if that fails.",
+          "format": "uri"
+        },
+        "headers": {
+          "type": "object",
+          "description": "HTTP headers sent with requests to remote servers. Commonly used for authentication (e.g., 'Authorization: Bearer ${TOKEN}'). Values support ${VAR} syntax for environment variable substitution.",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "allow_tools": {
+          "type": "array",
+          "description": "Whitelist of tool name patterns. When set, only tools whose names match at least one pattern are visible as CLI commands. Supports glob patterns with '*' (e.g., 'read_*' matches 'read_file', 'read_url'). Applied before deny_tools. When omitted, all tools are visible by default.",
+          "items": {
+            "type": "string",
+            "description": "Tool name or glob pattern (e.g., 'exact_name', 'prefix_*')."
+          }
+        },
+        "deny_tools": {
+          "type": "array",
+          "description": "Blacklist of tool name patterns. Tools whose names match any pattern are hidden from CLI commands. Supports glob patterns with '*'. Applied after allow_tools filtering, so it can exclude specific tools from an allowed set. When omitted, no tools are denied.",
+          "items": {
+            "type": "string",
+            "description": "Tool name or glob pattern (e.g., 'dangerous_tool', 'admin_*')."
+          }
+        }
+      },
+      "oneOf": [
+        {
+          "required": ["command"],
+          "not": {
+            "required": ["url"]
+          }
+        },
+        {
+          "required": ["url"],
+          "not": {
+            "required": ["command"]
+          }
+        }
+      ],
+      "additionalProperties": false
+    }
+  }
+}

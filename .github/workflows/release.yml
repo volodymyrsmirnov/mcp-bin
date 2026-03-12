@@ -1,0 +1,98 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.bump.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine next version
+        id: bump
+        run: |
+          latest=$(git tag --list 'v*' --sort=-v:refname | head -n1)
+          if [ -z "$latest" ]; then
+            echo "tag=v0.1.0" >> "$GITHUB_OUTPUT"
+          else
+            patch=$(echo "$latest" | cut -d. -f3)
+            prefix=$(echo "$latest" | cut -d. -f1-2)
+            echo "tag=${prefix}.$((patch + 1))" >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    needs: version
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+            suffix: linux-amd64
+          - goos: linux
+            goarch: arm64
+            suffix: linux-arm64
+          - goos: darwin
+            goarch: amd64
+            suffix: darwin-amd64
+          - goos: darwin
+            goarch: arm64
+            suffix: darwin-arm64
+          - goos: windows
+            goarch: amd64
+            suffix: windows-amd64.exe
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build
+        env:
+          CGO_ENABLED: "0"
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          VERSION="${{ needs.version.outputs.tag }}"
+          COMMIT="$(git rev-parse --short HEAD)"
+          DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          LDFLAGS="-s -w"
+          LDFLAGS="$LDFLAGS -X github.com/volodymyrsmirnov/mcp-bin/internal/version.Version=$VERSION"
+          LDFLAGS="$LDFLAGS -X github.com/volodymyrsmirnov/mcp-bin/internal/version.Commit=$COMMIT"
+          LDFLAGS="$LDFLAGS -X github.com/volodymyrsmirnov/mcp-bin/internal/version.Date=$DATE"
+          go build -ldflags="$LDFLAGS" -o mcp-bin-${{ matrix.suffix }} ./cmd/mcp-bin/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mcp-bin-${{ matrix.suffix }}
+          path: mcp-bin-${{ matrix.suffix }}
+
+  release:
+    needs: [version, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ needs.version.outputs.tag }}" \
+            --title "${{ needs.version.outputs.tag }}" \
+            --generate-notes \
+            artifacts/*
