@@ -9,7 +9,6 @@ import (
 	"os"
 	"os/exec"
 	"sort"
-	"sync"
 
 	"github.com/volodymyrsmirnov/mcp-bin/internal/config"
 	mcpclient "github.com/volodymyrsmirnov/mcp-bin/internal/mcp"
@@ -31,25 +30,18 @@ func Run(ctx context.Context, cfg *config.Config, connect bool, w io.Writer) boo
 	}
 
 	results := make(chan serverResult, len(cfg.Servers))
-	var wg sync.WaitGroup
 
 	for _, name := range names {
-		wg.Add(1)
 		go func(name string, srv config.ServerConfig) {
-			defer wg.Done()
 			var buf bytes.Buffer
 			ok := checkServer(ctx, name, srv, connect, &buf)
 			results <- serverResult{name: name, ok: ok, output: buf.String()}
 		}(name, cfg.Servers[name])
 	}
 
-	go func() {
-		wg.Wait()
-		close(results)
-	}()
-
 	resultMap := make(map[string]serverResult, len(cfg.Servers))
-	for res := range results {
+	for range len(cfg.Servers) {
+		res := <-results
 		resultMap[res.name] = res
 	}
 
