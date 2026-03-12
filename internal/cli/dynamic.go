@@ -45,7 +45,8 @@ func buildCommandsFromConfig(cfg *config.Config) []*ucli.Command {
 }
 
 // handleServerCommand handles all invocations of a server command in dev mode.
-// It introspects the server, then dispatches to the appropriate tool.
+// It introspects the server, builds a urfave/cli command tree from the discovered
+// schemas, and runs it. This produces identical help output to compiled mode.
 func handleServerCommand(ctx context.Context, cmd *ucli.Command, serverName string, serverCfg *config.ServerConfig) error {
 	args := cmd.Args().Slice()
 
@@ -54,73 +55,64 @@ func handleServerCommand(ctx context.Context, cmd *ucli.Command, serverName stri
 	if err != nil {
 		return fmt.Errorf("connecting to %s: %w", serverName, err)
 	}
-	defer client.Close()
 
 	tools, err := client.ListTools(ctx)
 	if err != nil {
+		client.Close()
 		return fmt.Errorf("listing tools from %s: %w", serverName, err)
 	}
 
 	schemas, err := mcpclient.ToolsToSchemas(tools)
 	if err != nil {
+		client.Close()
 		return err
 	}
 
-	// Filter tools based on allow_tools/deny_tools config
 	schemas = mcpclient.FilterSchemas(schemas, serverCfg.AllowTools, serverCfg.DenyTools)
+	client.Close()
 
-	// No args or --help: list tools
-	if len(args) == 0 || args[0] == "--help" || args[0] == "-h" {
-		printServerHelp(serverName, schemas)
-		return nil
+	// Build urfave/cli command tree (same as compiled mode) and run it.
+	// This delegates help rendering to urfave/cli for identical output.
+	srvCmd := buildServerCommandFromSchemas(serverName, serverCfg, schemas)
+
+	wrapper := &ucli.Command{
+		Name: cmd.Root().Name,
+		Flags: []ucli.Flag{
+			&ucli.BoolFlag{
+				Name:  "json",
+				Usage: "Output raw MCP JSON response",
+			},
+		},
+		Commands: []*ucli.Command{srvCmd},
+		// Return errors to the caller instead of calling os.Exit.
+		ExitErrHandler: func(_ context.Context, _ *ucli.Command, _ error) {},
 	}
 
-	toolName := args[0]
-	toolArgs := args[1:]
-
-	// Find the tool
-	var toolSchema *mcpclient.ToolSchema
-	for i := range schemas {
-		if schemas[i].Name == toolName {
-			toolSchema = &schemas[i]
-			break
-		}
+	// Forward --json flag if set on the outer app
+	wrapperArgs := []string{wrapper.Name}
+	if cmd.Root().Bool("json") {
+		wrapperArgs = append(wrapperArgs, "--json")
 	}
-	if toolSchema == nil {
-		printServerHelp(serverName, schemas)
-		return fmt.Errorf("unknown tool: %s", toolName)
-	}
+	wrapperArgs = append(wrapperArgs, serverName)
+	wrapperArgs = append(wrapperArgs, args...)
 
-	// Check for tool help
-	for _, a := range toolArgs {
-		if a == "--help" || a == "-h" {
-			printToolHelp(serverName, *toolSchema)
-			return nil
-		}
+	// Use a detached context to prevent urfave/cli from inheriting the outer
+	// command's name chain (which would cause NAME duplication in help output).
+	// Preserve deadline and cancellation from the parent context.
+	var detached context.Context
+	var cancel context.CancelFunc
+	if deadline, ok := ctx.Deadline(); ok {
+		detached, cancel = context.WithDeadline(context.Background(), deadline)
+	} else {
+		detached, cancel = context.WithCancel(context.Background())
 	}
+	go func() {
+		<-ctx.Done()
+		cancel()
+	}()
+	defer cancel()
 
-	// Parse tool arguments
-	schema := mcpclient.ParseInputSchema(toolSchema.InputSchema)
-	callArgs, err := parseToolArgs(toolArgs, schema)
-	if err != nil {
-		return err
-	}
-
-	// Validate required
-	for _, r := range schema.Required {
-		if _, ok := callArgs[r]; !ok {
-			return fmt.Errorf("missing required argument: --%s", r)
-		}
-	}
-
-	// Call the tool
-	result, err := client.CallTool(ctx, toolName, callArgs)
-	if err != nil {
-		return fmt.Errorf("calling tool %s: %w", toolName, err)
-	}
-
-	jsonMode := cmd.Root().Bool("json")
-	return output.FormatResult(result, jsonMode)
+	return wrapper.Run(detached, wrapperArgs)
 }
 
 // buildServerCommandFromSchemas builds a server command with pre-known tool schemas (compiled mode).
@@ -402,71 +394,6 @@ func parseValue(value, typ string) (interface{}, error) {
 		}
 		return value, nil
 	}
-}
-
-func printServerHelp(serverName string, tools []mcpclient.ToolSchema) {
-	fmt.Printf("Server: %s (%d tools)\n", serverName, len(tools))
-	for _, tool := range tools {
-		fmt.Println()
-		formatToolEntry(tool, "  ")
-	}
-	fmt.Printf("\nUsage: mcp-bin run --config <file> %s <tool> [--flag value ...]\n", serverName)
-	fmt.Println("Run with <tool> --help for detailed flag descriptions.")
-}
-
-func printToolHelp(serverName string, tool mcpclient.ToolSchema) {
-	formatToolEntry(tool, "")
-	fmt.Printf("\nUsage: mcp-bin run --config <file> %s %s [--flag value ...]\n", serverName, tool.Name)
-}
-
-// formatToolEntry prints a tool's signature, description, and flags.
-// prefix controls the base indentation (e.g. "  " for server listing, "" for single tool help).
-func formatToolEntry(tool mcpclient.ToolSchema, prefix string) {
-	schema := mcpclient.ParseInputSchema(tool.InputSchema)
-	requiredSet := make(map[string]bool)
-	for _, r := range schema.Required {
-		requiredSet[r] = true
-	}
-
-	// Tool name, then one flag per line indented below
-	fmt.Printf("%s%s\n", prefix, tool.Name)
-	flagIndent := prefix + "  "
-	names := mcpclient.SortedKeys(schema.Properties)
-	for _, name := range names {
-		prop := schema.Properties[name]
-		typ := prop.Type
-		if typ == "" {
-			typ = "string"
-		}
-		req := ""
-		if requiredSet[name] {
-			req = " (required)"
-		}
-		fmt.Printf("%s--%s <%s>%s\n", flagIndent, name, typ, req)
-	}
-
-	// Description block (indented under prefix)
-	desc := strings.TrimSpace(tool.Description)
-	if desc != "" {
-		descIndent := prefix + "  "
-		fmt.Printf("\n%s\n\n", indentLines(desc, descIndent, false))
-	}
-}
-
-// indentLines prepends prefix to every line of text.
-// If skipFirst is true, the first line is returned as-is (caller already handles its indent).
-func indentLines(text, prefix string, skipFirst bool) string {
-	lines := strings.Split(text, "\n")
-	for i, line := range lines {
-		if i == 0 && skipFirst {
-			continue
-		}
-		if line == "" {
-			continue
-		}
-		lines[i] = prefix + line
-	}
-	return strings.Join(lines, "\n")
 }
 
 // splitFirst splits text into the first paragraph and the rest.

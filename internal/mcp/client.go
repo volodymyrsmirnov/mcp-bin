@@ -46,6 +46,7 @@ func connectStdio(ctx context.Context, cfg config.ServerConfig) (*Client, error)
 	}
 
 	var opts []transport.StdioOption
+	opts = append(opts, transport.WithCommandLogger(&nopLogger{}))
 	if cfg.Cwd != "" {
 		cwd := cfg.Cwd
 		opts = append(opts, transport.WithCommandFunc(
@@ -214,3 +215,11 @@ func (c *Client) Close() {
 		_ = c.mcpClient.Close()
 	}
 }
+
+// nopLogger suppresses log output from the mcp-go stdio transport.
+// The transport's readResponses goroutine logs spurious "Error reading from
+// stdout: file already closed" messages when the connection is closed normally.
+type nopLogger struct{}
+
+func (*nopLogger) Infof(string, ...any)  {}
+func (*nopLogger) Errorf(string, ...any) {}
