@@ -52,24 +52,6 @@ func writeServerSection(w io.Writer, serverName string, tools []mcpclient.ToolSc
 	for _, tool := range sortTools(tools) {
 		desc := firstLine(tool.Description)
 		_, _ = fmt.Fprintf(w, "- `%s` - %s\n", tool.Name, desc)
-
-		schema := mcpclient.ParseInputSchema(tool.InputSchema)
-		if len(schema.Properties) > 0 {
-			requiredSet := make(map[string]bool)
-			for _, r := range schema.Required {
-				requiredSet[r] = true
-			}
-			names := mcpclient.SortedKeys(schema.Properties)
-			for _, name := range names {
-				prop := schema.Properties[name]
-				typ := prop.TypeHint()
-				req := ""
-				if requiredSet[name] {
-					req = " (required)"
-				}
-				_, _ = fmt.Fprintf(w, "  - `--%s` %s%s\n", name, typ, req)
-			}
-		}
 	}
 	_, _ = fmt.Fprintln(w)
 }
@@ -105,23 +87,7 @@ func writeUsageExamples(w io.Writer, binaryName string, serverNames []string, ma
 }
 
 func buildExample(binaryName, serverName string, tool mcpclient.ToolSchema) string {
-	parts := []string{binaryName, serverName, tool.Name}
-
-	schema := mcpclient.ParseInputSchema(tool.InputSchema)
-	requiredSet := make(map[string]bool)
-	for _, r := range schema.Required {
-		requiredSet[r] = true
-	}
-
-	names := mcpclient.SortedKeys(schema.Properties)
-	for _, name := range names {
-		if !requiredSet[name] {
-			continue
-		}
-		parts = append(parts, "--"+name, "<"+name+">")
-	}
-
-	return strings.Join(parts, " ")
+	return strings.Join([]string{binaryName, serverName, tool.Name, "--help"}, " ")
 }
 
 func sortTools(tools []mcpclient.ToolSchema) []mcpclient.ToolSchema {
