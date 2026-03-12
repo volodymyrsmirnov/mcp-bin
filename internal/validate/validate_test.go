@@ -2,6 +2,7 @@ package validate
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"strings"
 	"testing"
@@ -179,6 +180,34 @@ func TestCheckFiles(t *testing.T) {
 			t.Errorf("expected warning for missing file:\n%s", buf.String())
 		}
 	})
+}
+
+func TestRunOutputOrdering(t *testing.T) {
+	cfg := &config.Config{
+		Servers: map[string]config.ServerConfig{
+			"charlie": {Command: "sh"},
+			"alpha":   {Command: "sh"},
+			"bravo":   {Command: "sh"},
+		},
+	}
+	var buf bytes.Buffer
+	ok := Run(context.Background(), cfg, false, &buf)
+	output := buf.String()
+
+	if !ok {
+		t.Fatalf("Run() returned false, want true\noutput: %s", output)
+	}
+
+	alphaIdx := strings.Index(output, `"alpha"`)
+	bravoIdx := strings.Index(output, `"bravo"`)
+	charlieIdx := strings.Index(output, `"charlie"`)
+
+	if alphaIdx >= bravoIdx || bravoIdx >= charlieIdx {
+		t.Errorf("servers not in alphabetical order:\n%s", output)
+	}
+	if !strings.Contains(output, "3 server(s) passed, 0 server(s) failed") {
+		t.Errorf("unexpected summary:\n%s", output)
+	}
 }
 
 func TestOutputHelpers(t *testing.T) {
