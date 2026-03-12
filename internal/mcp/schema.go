@@ -7,6 +7,39 @@ import (
 	"sort"
 )
 
+// jsonStringOrArray handles JSON Schema "type" which can be a string ("string")
+// or an array (["string", "null"]).
+type jsonStringOrArray []string
+
+func (t *jsonStringOrArray) UnmarshalJSON(data []byte) error {
+	// Try string first.
+	var single string
+	if err := json.Unmarshal(data, &single); err == nil {
+		*t = []string{single}
+		return nil
+	}
+	// Try array of strings.
+	var arr []string
+	if err := json.Unmarshal(data, &arr); err != nil {
+		return err
+	}
+	*t = arr
+	return nil
+}
+
+// Primary returns the first non-"null" type, or "string" if empty.
+func (t jsonStringOrArray) Primary() string {
+	for _, v := range t {
+		if v != "null" {
+			return v
+		}
+	}
+	if len(t) > 0 {
+		return t[0]
+	}
+	return "string"
+}
+
 // PropertyInfo holds parsed info about a JSON schema property.
 type PropertyInfo struct {
 	Type        string
@@ -37,8 +70,8 @@ func ParseInputSchema(raw json.RawMessage) ParsedSchema {
 
 	for name, propRaw := range schema.Properties {
 		var prop struct {
-			Type        string `json:"type"`
-			Description string `json:"description"`
+			Type        jsonStringOrArray `json:"type"`
+			Description string            `json:"description"`
 		}
 		if err := json.Unmarshal(propRaw, &prop); err != nil {
 			_, _ = fmt.Fprintf(os.Stderr, "Warning: could not parse schema for property %q, defaulting to string: %v\n", name, err)
@@ -46,7 +79,7 @@ func ParseInputSchema(raw json.RawMessage) ParsedSchema {
 			continue
 		}
 		parsed.Properties[name] = PropertyInfo{
-			Type:        prop.Type,
+			Type:        prop.Type.Primary(),
 			Description: prop.Description,
 		}
 	}
