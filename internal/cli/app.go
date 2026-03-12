@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 
@@ -19,8 +20,13 @@ import (
 
 // BuildApp creates the CLI application.
 func BuildApp(cfg *config.Config, manifest *mcpclient.Manifest, compiledMode bool) *ucli.Command {
+	appName := "mcp-bin"
+	if compiledMode && len(os.Args) > 0 {
+		appName = filepath.Base(os.Args[0])
+	}
+
 	app := &ucli.Command{
-		Name:    "mcp-bin",
+		Name:    appName,
 		Usage:   "Turn MCP server tools into CLI commands",
 		Version: version.String(),
 		Flags: []ucli.Flag{

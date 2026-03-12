@@ -30,8 +30,9 @@ func TestBuildAppCompiledMode(t *testing.T) {
 	}
 
 	app := BuildApp(cfg, manifest, true)
-	if app.Name != "mcp-bin" {
-		t.Errorf("expected mcp-bin, got %s", app.Name)
+	expectedName := filepath.Base(os.Args[0])
+	if app.Name != expectedName {
+		t.Errorf("expected %s, got %s", expectedName, app.Name)
 	}
 
 	// Should have server commands from manifest
