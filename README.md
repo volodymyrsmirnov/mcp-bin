@@ -2,6 +2,27 @@
 
 Turn MCP server tools into CLI commands. Compile into a single self-contained binary.
 
+## Install
+
+### Homebrew (macOS / Linux)
+
+```bash
+brew tap volodymyrsmirnov/mcp-bin https://github.com/volodymyrsmirnov/mcp-bin
+brew install mcp-bin          # latest version
+brew install mcp-bin@0.1.5    # specific version
+brew search mcp-bin           # list available versions
+```
+
+### GitHub Releases
+
+Download a pre-built binary from the [releases page](https://github.com/volodymyrsmirnov/mcp-bin/releases).
+
+### Build from Source
+
+```bash
+go install github.com/volodymyrsmirnov/mcp-bin/cmd/mcp-bin@latest
+```
+
 ## Quick Start
 
 ```bash

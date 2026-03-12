@@ -1,6 +1,7 @@
 name: Release
 
 on:
+  workflow_dispatch: 
   push:
     branches: [main]
 
@@ -96,3 +97,88 @@ jobs:
             --title "${{ needs.version.outputs.tag }}" \
             --generate-notes \
             artifacts/*
+
+  homebrew:
+    needs: [version, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Update Homebrew formulae
+        env:
+          VERSION: ${{ needs.version.outputs.tag }}
+        run: |
+          SHA_DARWIN_AMD64=$(sha256sum artifacts/mcp-bin-darwin-amd64 | cut -d' ' -f1)
+          SHA_DARWIN_ARM64=$(sha256sum artifacts/mcp-bin-darwin-arm64 | cut -d' ' -f1)
+          SHA_LINUX_AMD64=$(sha256sum artifacts/mcp-bin-linux-amd64 | cut -d' ' -f1)
+          SHA_LINUX_ARM64=$(sha256sum artifacts/mcp-bin-linux-arm64 | cut -d' ' -f1)
+          REPO="https://github.com/volodymyrsmirnov/mcp-bin/releases/download/${VERSION}"
+          SEMVER="${VERSION#v}"
+
+          # Versioned class name: 0.1.5 -> McpBinAT015
+          CLASS_SUFFIX=$(echo "$SEMVER" | tr -d '.')
+          VERSIONED_CLASS="McpBinAT${CLASS_SUFFIX}"
+
+          mkdir -p Formula
+
+          generate_formula() {
+            local class_name="$1"
+            local file="$2"
+            cat > "$file" << FORMULA
+          class ${class_name} < Formula
+            desc "Turn MCP server tools into CLI commands"
+            homepage "https://github.com/volodymyrsmirnov/mcp-bin"
+            version "${SEMVER}"
+            license "MIT"
+
+            on_macos do
+              on_arm do
+                url "${REPO}/mcp-bin-darwin-arm64"
+                sha256 "${SHA_DARWIN_ARM64}"
+              end
+              on_intel do
+                url "${REPO}/mcp-bin-darwin-amd64"
+                sha256 "${SHA_DARWIN_AMD64}"
+              end
+            end
+
+            on_linux do
+              on_arm do
+                url "${REPO}/mcp-bin-linux-arm64"
+                sha256 "${SHA_LINUX_ARM64}"
+              end
+              on_intel do
+                url "${REPO}/mcp-bin-linux-amd64"
+                sha256 "${SHA_LINUX_AMD64}"
+              end
+            end
+
+            def install
+              binary = Dir["mcp-bin-*"].first
+              bin.install binary => "mcp-bin"
+            end
+
+            test do
+              assert_match version.to_s, shell_output("#{bin}/mcp-bin --version")
+            end
+          end
+          FORMULA
+            sed -i 's/^          //' "$file"
+          }
+
+          generate_formula "McpBin" "Formula/mcp-bin.rb"
+          generate_formula "$VERSIONED_CLASS" "Formula/mcp-bin@${SEMVER}.rb"
+
+      - name: Commit formulae
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/
+          git diff --cached --quiet && exit 0
+          git commit -m "homebrew: mcp-bin ${{ needs.version.outputs.tag }}"
+          git push
