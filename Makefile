@@ -1,7 +1,7 @@
 .PHONY: build test fmt lint vet clean
 
 build: clean
-	go build -o mcp-bin ./cmd/mcp-bin/
+	go build -ldflags="-s -w" -o mcp-bin ./cmd/mcp-bin/
 
 test:
 	go test ./...
