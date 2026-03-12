@@ -62,10 +62,7 @@ func writeServerSection(w io.Writer, serverName string, tools []mcpclient.ToolSc
 			names := mcpclient.SortedKeys(schema.Properties)
 			for _, name := range names {
 				prop := schema.Properties[name]
-				typ := prop.Type
-				if typ == "" {
-					typ = "string"
-				}
+				typ := prop.TypeHint()
 				req := ""
 				if requiredSet[name] {
 					req = " (required)"

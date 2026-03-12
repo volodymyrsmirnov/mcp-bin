@@ -241,6 +241,48 @@ func TestToKebabCase(t *testing.T) {
 	}
 }
 
+func TestGenerateComplexTypes(t *testing.T) {
+	manifest := &mcpclient.Manifest{
+		Servers: map[string][]mcpclient.ToolSchema{
+			"api": {
+				{
+					Name:        "search",
+					Description: "Search items",
+					InputSchema: json.RawMessage(`{
+						"type": "object",
+						"properties": {
+							"tags": {"type": "array", "items": {"type": "string"}},
+							"mode": {"type": "string", "enum": ["fast", "slow"]},
+							"config": {
+								"type": "object",
+								"properties": {
+									"host": {"type": "string"},
+									"port": {"type": "integer"}
+								}
+							}
+						},
+						"required": ["tags"]
+					}`),
+				},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	Generate(&buf, manifest, "bin", "test", "desc")
+	out := buf.String()
+
+	if !strings.Contains(out, "`--tags` array[string] (required)") {
+		t.Errorf("expected array[string] type hint, got:\n%s", out)
+	}
+	if !strings.Contains(out, `"fast", "slow"`) {
+		t.Errorf("expected enum values in output, got:\n%s", out)
+	}
+	if !strings.Contains(out, "object{host: string, port: integer}") {
+		t.Errorf("expected object properties in output, got:\n%s", out)
+	}
+}
+
 func TestFirstLine(t *testing.T) {
 	tests := []struct {
 		input string
