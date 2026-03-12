@@ -1,7 +1,6 @@
 package mcp
 
 import (
-	"context"
 	"encoding/json"
 
 	mcplib "github.com/mark3labs/mcp-go/mcp"
@@ -49,20 +48,4 @@ func FilterSchemas(schemas []ToolSchema, allowTools, denyTools []string) []ToolS
 		}
 	}
 	return filtered
-}
-
-// IntrospectServer connects to a server and returns its tool schemas.
-func IntrospectServer(ctx context.Context, cfg config.ServerConfig) ([]ToolSchema, error) {
-	client, err := Connect(ctx, cfg)
-	if err != nil {
-		return nil, err
-	}
-	defer client.Close()
-
-	tools, err := client.ListTools(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	return ToolsToSchemas(tools)
 }

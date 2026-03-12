@@ -11,6 +11,9 @@ import (
 
 // FormatResult writes the tool call result to stdout.
 func FormatResult(result *mcp.CallToolResult, jsonMode bool) error {
+	if result == nil {
+		return fmt.Errorf("nil result")
+	}
 	if jsonMode {
 		return formatJSON(result, os.Stdout)
 	}
@@ -47,7 +50,8 @@ func formatText(result *mcp.CallToolResult, w io.Writer) error {
 		case mcp.ImageContent:
 			_, _ = fmt.Fprintf(w, "[image: %s, %d bytes]\n", c.MIMEType, len(c.Data))
 		case mcp.EmbeddedResource:
-			_, _ = fmt.Fprintf(w, "[resource: %s]\n", c.Resource)
+			data, _ := json.MarshalIndent(c.Resource, "", "  ")
+			_, _ = fmt.Fprintf(w, "[resource: %s]\n", string(data))
 		default:
 			// Fallback: marshal as JSON
 			data, _ := json.MarshalIndent(content, "", "  ")

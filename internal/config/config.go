@@ -80,6 +80,7 @@ type EnvValue struct {
 type CompiledConfig struct {
 	Files   []string                        `json:"files" yaml:"files"`
 	Servers map[string]CompiledServerConfig `json:"servers" yaml:"servers"`
+	BaseDir string                          `json:"baseDir,omitempty" yaml:"baseDir,omitempty"`
 }
 
 type CompiledServerConfig struct {
@@ -140,8 +141,9 @@ func LoadCompiledConfig(data []byte) (*Config, error) {
 	}
 
 	cfg := &Config{
-		Files:   cc.Files,
-		Servers: make(map[string]ServerConfig),
+		Files:     cc.Files,
+		Servers:   make(map[string]ServerConfig),
+		configDir: cc.BaseDir,
 	}
 
 	for name, srv := range cc.Servers {
@@ -237,9 +239,17 @@ func (c *Config) resolveFilePaths(absDir string) {
 
 // PatchFiles updates embedded file paths and sets local server cwd
 // to the extracted dirs root so relative paths in args resolve correctly.
-func (c *Config) PatchFiles(dirsRoot string) {
+// The baseDir parameter is the original config directory used during compilation
+// to compute relative paths for absolute file entries.
+func (c *Config) PatchFiles(dirsRoot string, baseDir string) {
 	for i, f := range c.Files {
 		if filepath.IsAbs(f) {
+			if baseDir != "" {
+				if rel, err := filepath.Rel(baseDir, f); err == nil && !strings.HasPrefix(rel, "..") {
+					c.Files[i] = filepath.Join(dirsRoot, rel)
+					continue
+				}
+			}
 			c.Files[i] = filepath.Join(dirsRoot, filepath.Base(f))
 		} else {
 			c.Files[i] = filepath.Join(dirsRoot, f)
@@ -256,6 +266,13 @@ func (c *Config) PatchFiles(dirsRoot string) {
 			continue
 		}
 		if srv.Cwd != "" {
+			if baseDir != "" {
+				if rel, err := filepath.Rel(baseDir, srv.Cwd); err == nil && !strings.HasPrefix(rel, "..") {
+					srv.Cwd = filepath.Join(dirsRoot, rel)
+					c.Servers[name] = srv
+					continue
+				}
+			}
 			srv.Cwd = filepath.Join(dirsRoot, filepath.Base(srv.Cwd))
 		} else {
 			srv.Cwd = dirsRoot

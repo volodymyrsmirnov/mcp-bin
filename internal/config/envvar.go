@@ -47,6 +47,7 @@ func BuildCompiledConfig(c *Config) *CompiledConfig {
 	cc := &CompiledConfig{
 		Files:   c.Files,
 		Servers: make(map[string]CompiledServerConfig),
+		BaseDir: c.configDir,
 	}
 
 	for name, srv := range c.Servers {

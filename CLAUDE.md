@@ -117,6 +117,10 @@ Package aliases used: `ucli` for urfave/cli, `mcpclient` for internal/mcp, `mcpl
 - No test framework — stdlib `testing` only
 - Test files colocated with source: `foo.go` / `foo_test.go`
 
+## Workflow Rules
+
+- **After every code change**, run `make fmt` then `make lint` and fix any issues before considering the change complete.
+
 ## Conventions
 
 - All business logic in `internal/` packages

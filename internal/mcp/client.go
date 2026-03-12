@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/mark3labs/mcp-go/client"
 	"github.com/mark3labs/mcp-go/client/transport"
@@ -67,18 +68,35 @@ func connectStdio(ctx context.Context, cfg config.ServerConfig) (*Client, error)
 }
 
 // stderrError appends captured stderr output to a connection error.
+// Reads at most 4KB with a 2-second timeout to avoid hanging on
+// servers that keep stderr open or produce unbounded output.
 func stderrError(err error, stderr io.Reader) error {
 	if stderr == nil {
 		return err
 	}
-	out, readErr := io.ReadAll(stderr)
-	if readErr != nil || len(out) == 0 {
-		return err
+	ch := make(chan []byte, 1)
+	go func() {
+		out, _ := io.ReadAll(io.LimitReader(stderr, 4096))
+		ch <- out
+	}()
+	select {
+	case out := <-ch:
+		if len(out) > 0 {
+			return fmt.Errorf("%w\nserver stderr:\n%s", err, strings.TrimSpace(string(out)))
+		}
+	case <-time.After(2 * time.Second):
 	}
-	return fmt.Errorf("%w\nserver stderr:\n%s", err, strings.TrimSpace(string(out)))
+	return err
 }
 
 func connectRemote(ctx context.Context, cfg config.ServerConfig) (*Client, error) {
+	// Apply a default connect timeout if the context has no deadline
+	if _, ok := ctx.Deadline(); !ok {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, 30*time.Second)
+		defer cancel()
+	}
+
 	// Try Streamable HTTP first
 	c, err := tryStreamableHTTP(ctx, cfg)
 	if err == nil {

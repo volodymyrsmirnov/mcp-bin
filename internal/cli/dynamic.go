@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 
 	ucli "github.com/urfave/cli/v3"
@@ -243,7 +244,9 @@ func schemaToFlags(schema ParsedSchema) []ucli.Flag {
 	}
 
 	var flags []ucli.Flag
-	for name, prop := range schema.Properties {
+	names := sortedKeys(schema.Properties)
+	for _, name := range names {
+		prop := schema.Properties[name]
 		usage := flagUsage(prop, requiredSet[name])
 		switch prop.Type {
 		case "string":
@@ -296,8 +299,8 @@ func collectArgs(cmd *ucli.Command, schema ParsedSchema) map[string]interface{} 
 	for name, prop := range schema.Properties {
 		switch prop.Type {
 		case "string":
-			if v := cmd.String(name); v != "" {
-				args[name] = v
+			if cmd.IsSet(name) {
+				args[name] = cmd.String(name)
 			}
 		case "number":
 			if cmd.IsSet(name) {
@@ -312,7 +315,8 @@ func collectArgs(cmd *ucli.Command, schema ParsedSchema) map[string]interface{} 
 				args[name] = cmd.Bool(name)
 			}
 		default:
-			if v := cmd.String(name); v != "" {
+			if cmd.IsSet(name) {
+				v := cmd.String(name)
 				var jsonVal interface{}
 				if err := json.Unmarshal([]byte(v), &jsonVal); err == nil {
 					args[name] = jsonVal
@@ -465,7 +469,9 @@ func printToolHelp(serverName string, tool mcpclient.ToolSchema) {
 		}
 
 		fmt.Println("FLAGS:")
-		for name, prop := range schema.Properties {
+		names := sortedKeys(schema.Properties)
+		for _, name := range names {
+			prop := schema.Properties[name]
 			req := ""
 			if requiredSet[name] {
 				req = " (required)"
@@ -476,4 +482,13 @@ func printToolHelp(serverName string, tool mcpclient.ToolSchema) {
 		fmt.Println("  (schema not available — flags are passed through to the server)")
 	}
 	fmt.Printf("\nUsage: mcp-bin run --config <file> %s %s [--flag value ...]\n", serverName, tool.Name)
+}
+
+func sortedKeys(m map[string]PropertyInfo) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }

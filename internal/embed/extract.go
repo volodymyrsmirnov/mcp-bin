@@ -45,10 +45,13 @@ func ExtractToCache(info *ZipInfo) (_ *CachePaths, err error) {
 		return paths, nil
 	}
 
-	// Clean up incomplete previous extraction
-	if _, err := os.Stat(cacheDir); err == nil {
-		_ = os.RemoveAll(cacheDir)
-	}
+	// Extract to a temporary directory, then atomically rename into place.
+	// This prevents partial extractions from being visible to other processes.
+	tmpDir := cacheDir + ".tmp"
+
+	// Clean up any previous incomplete extraction
+	_ = os.RemoveAll(tmpDir)
+	_ = os.RemoveAll(cacheDir)
 
 	// Open the binary and create zip reader
 	f, err := os.Open(info.ExePath)
@@ -67,36 +70,44 @@ func ExtractToCache(info *ZipInfo) (_ *CachePaths, err error) {
 		return nil, fmt.Errorf("reading zip: %w", err)
 	}
 
-	// Extract
-	if err := os.MkdirAll(cacheDir, 0700); err != nil {
-		return nil, fmt.Errorf("creating cache dir: %w", err)
+	// Extract to temp dir
+	if err := os.MkdirAll(tmpDir, 0700); err != nil {
+		return nil, fmt.Errorf("creating temp dir: %w", err)
 	}
 
 	for _, zf := range reader.File {
-		destPath := filepath.Join(cacheDir, zf.Name)
+		destPath := filepath.Join(tmpDir, zf.Name)
 
 		// Prevent zip slip
-		if !isSubPath(cacheDir, destPath) {
+		if !isSubPath(tmpDir, destPath) {
 			continue
 		}
 
 		if zf.FileInfo().IsDir() {
 			if mkErr := os.MkdirAll(destPath, 0700); mkErr != nil {
+				_ = os.RemoveAll(tmpDir)
 				return nil, fmt.Errorf("creating directory %s: %w", destPath, mkErr)
 			}
 			continue
 		}
 
 		if err := extractFile(zf, destPath); err != nil {
-			_ = os.RemoveAll(cacheDir)
+			_ = os.RemoveAll(tmpDir)
 			return nil, fmt.Errorf("extracting %s: %w", zf.Name, err)
 		}
 	}
 
-	// Mark extraction as complete
-	if err := os.WriteFile(paths.Complete, nil, 0600); err != nil {
-		_ = os.RemoveAll(cacheDir)
+	// Write completion marker inside temp dir before rename
+	completeTmp := filepath.Join(tmpDir, ".complete")
+	if err := os.WriteFile(completeTmp, nil, 0600); err != nil {
+		_ = os.RemoveAll(tmpDir)
 		return nil, fmt.Errorf("writing completion marker: %w", err)
+	}
+
+	// Atomically publish the cache
+	if err := os.Rename(tmpDir, cacheDir); err != nil {
+		_ = os.RemoveAll(tmpDir)
+		return nil, fmt.Errorf("publishing cache: %w", err)
 	}
 
 	return paths, nil

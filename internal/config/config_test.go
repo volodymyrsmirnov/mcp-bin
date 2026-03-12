@@ -218,9 +218,9 @@ func TestPatchFiles(t *testing.T) {
 		},
 	}
 
-	cfg.PatchFiles("/cache/dirs")
+	// Without baseDir, absolute paths fall back to basename
+	cfg.PatchFiles("/cache/dirs", "")
 
-	// Absolute paths use basename
 	if cfg.Files[0] != filepath.Join("/cache/dirs", "dir1") {
 		t.Errorf("expected patched dir, got %s", cfg.Files[0])
 	}
@@ -228,7 +228,7 @@ func TestPatchFiles(t *testing.T) {
 		t.Errorf("expected patched dir, got %s", cfg.Files[1])
 	}
 
-	// Explicit cwd is rebased
+	// Explicit cwd falls back to basename without baseDir
 	local := cfg.Servers["local"]
 	if local.Cwd != filepath.Join("/cache/dirs", "dir1") {
 		t.Errorf("expected patched cwd, got %s", local.Cwd)
@@ -241,6 +241,30 @@ func TestPatchFiles(t *testing.T) {
 	}
 }
 
+func TestPatchFilesWithBaseDir(t *testing.T) {
+	cfg := &Config{
+		Files: []string{"/project/src/server.py", "/project/lib/utils.py"},
+		Servers: map[string]ServerConfig{
+			"local": {Command: "python3", Cwd: "/project/src"},
+		},
+	}
+
+	// With baseDir, absolute paths preserve relative structure
+	cfg.PatchFiles("/cache/dirs", "/project")
+
+	if cfg.Files[0] != filepath.Join("/cache/dirs", "src/server.py") {
+		t.Errorf("expected preserved structure, got %s", cfg.Files[0])
+	}
+	if cfg.Files[1] != filepath.Join("/cache/dirs", "lib/utils.py") {
+		t.Errorf("expected preserved structure, got %s", cfg.Files[1])
+	}
+
+	local := cfg.Servers["local"]
+	if local.Cwd != filepath.Join("/cache/dirs", "src") {
+		t.Errorf("expected preserved cwd structure, got %s", local.Cwd)
+	}
+}
+
 func TestPatchFilesSetsDefaultCwd(t *testing.T) {
 	cfg := &Config{
 		Files: []string{"examples/server.py"},
@@ -249,7 +273,7 @@ func TestPatchFilesSetsDefaultCwd(t *testing.T) {
 		},
 	}
 
-	cfg.PatchFiles("/cache/dirs")
+	cfg.PatchFiles("/cache/dirs", "")
 
 	s1 := cfg.Servers["s1"]
 	// Server without explicit cwd gets dirsRoot as cwd
@@ -267,7 +291,7 @@ func TestPatchFilesRelativePaths(t *testing.T) {
 		Files: []string{"examples/server.py", "lib/utils"},
 	}
 
-	cfg.PatchFiles("/cache/dirs")
+	cfg.PatchFiles("/cache/dirs", "")
 
 	// Relative paths are preserved under dirsRoot
 	if cfg.Files[0] != filepath.Join("/cache/dirs", "examples/server.py") {
@@ -285,7 +309,7 @@ func TestPatchFilesNoFilesSkipsCwd(t *testing.T) {
 		},
 	}
 
-	cfg.PatchFiles("/cache/dirs")
+	cfg.PatchFiles("/cache/dirs", "")
 
 	s1 := cfg.Servers["s1"]
 	if s1.Cwd != "" {

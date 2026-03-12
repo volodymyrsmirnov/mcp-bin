@@ -84,6 +84,7 @@ func loadConfigFromArgs() *config.Config {
 		if (arg == "--config" || arg == "-config") && i+1 < len(os.Args) {
 			cfg, err := config.LoadFromFile(os.Args[i+1])
 			if err != nil {
+				_, _ = fmt.Fprintf(os.Stderr, "Warning: could not pre-load config: %v\n", err)
 				return nil
 			}
 			return cfg
@@ -91,6 +92,7 @@ func loadConfigFromArgs() *config.Config {
 		if strings.HasPrefix(arg, "--config=") {
 			cfg, err := config.LoadFromFile(strings.TrimPrefix(arg, "--config="))
 			if err != nil {
+				_, _ = fmt.Fprintf(os.Stderr, "Warning: could not pre-load config: %v\n", err)
 				return nil
 			}
 			return cfg

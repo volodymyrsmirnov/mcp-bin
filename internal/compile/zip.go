@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // CreateZipArchive creates a zip archive in memory containing the given files
@@ -37,11 +38,11 @@ func CreateZipArchive(files map[string][]byte, paths []string, baseDir string) (
 		// For absolute paths, compute relative path from baseDir.
 		zipRelPath := p
 		if filepath.IsAbs(p) && baseDir != "" {
-			if rel, err := filepath.Rel(baseDir, p); err == nil {
-				zipRelPath = rel
-			} else {
-				zipRelPath = filepath.Base(p)
+			rel, relErr := filepath.Rel(baseDir, p)
+			if relErr != nil || strings.HasPrefix(rel, "..") {
+				return nil, fmt.Errorf("path %s is outside base directory %s", p, baseDir)
 			}
+			zipRelPath = rel
 		} else if filepath.IsAbs(p) {
 			zipRelPath = filepath.Base(p)
 		}
