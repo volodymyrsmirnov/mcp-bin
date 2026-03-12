@@ -13,6 +13,7 @@ import (
 	"github.com/volodymyrsmirnov/mcp-bin/internal/compile"
 	"github.com/volodymyrsmirnov/mcp-bin/internal/config"
 	mcpclient "github.com/volodymyrsmirnov/mcp-bin/internal/mcp"
+	"github.com/volodymyrsmirnov/mcp-bin/internal/serve"
 	"github.com/volodymyrsmirnov/mcp-bin/internal/skill"
 	"github.com/volodymyrsmirnov/mcp-bin/internal/validate"
 	"github.com/volodymyrsmirnov/mcp-bin/internal/version"
@@ -67,15 +68,58 @@ func BuildApp(cfg *config.Config, manifest *mcpclient.Manifest, compiledMode boo
 					Name:  "description",
 					Usage: "Skill description (auto-generated if omitted)",
 				},
+				&ucli.StringFlag{
+					Name:  "mode",
+					Usage: "Output mode: cli or http",
+					Value: "cli",
+				},
+				&ucli.StringFlag{
+					Name:  "base-url",
+					Usage: "Base URL for HTTP mode (e.g., https://example.com)",
+				},
+				&ucli.StringFlag{
+					Name:  "token",
+					Usage: "Bearer token for HTTP mode examples",
+				},
 			},
 			Action: func(ctx context.Context, cmd *ucli.Command) error {
-				binaryName := cmd.Root().Name
-				skill.Generate(os.Stdout, manifest, binaryName, cmd.String("name"), cmd.String("description"))
+				mode := cmd.String("mode")
+				switch mode {
+				case "cli":
+					binaryName := cmd.Root().Name
+					skill.Generate(os.Stdout, manifest, binaryName, cmd.String("name"), cmd.String("description"))
+				case "http":
+					baseURL := cmd.String("base-url")
+					if baseURL == "" {
+						baseURL = "http://localhost:8819"
+					}
+					skill.GenerateHTTP(os.Stdout, manifest, cmd.String("name"), cmd.String("description"), baseURL, cmd.String("token"))
+				default:
+					return fmt.Errorf("unknown mode: %s (use cli or http)", mode)
+				}
 				return nil
 			},
 		}
+		serveCmd := &ucli.Command{
+			Name:  "serve",
+			Usage: "Start REST API server",
+			Flags: []ucli.Flag{
+				&ucli.StringFlag{
+					Name:  "listen",
+					Usage: "Listen address (host:port)",
+					Value: "localhost:8819",
+				},
+				&ucli.StringFlag{
+					Name:  "token",
+					Usage: "Bearer token for authentication",
+				},
+			},
+			Action: func(ctx context.Context, cmd *ucli.Command) error {
+				return serve.Run(ctx, cfg, manifest, cmd.String("listen"), cmd.String("token"))
+			},
+		}
 		app.Commands = buildCommandsFromManifest(cfg, manifest)
-		app.Commands = append(app.Commands, validateCmd, skillCmd)
+		app.Commands = append(app.Commands, validateCmd, skillCmd, serveCmd)
 	} else {
 		configFlag := &ucli.StringFlag{
 			Name:     "config",
@@ -165,6 +209,19 @@ func BuildApp(cfg *config.Config, manifest *mcpclient.Manifest, compiledMode boo
 					Name:  "description",
 					Usage: "Skill description (auto-generated if omitted)",
 				},
+				&ucli.StringFlag{
+					Name:  "mode",
+					Usage: "Output mode: cli or http",
+					Value: "cli",
+				},
+				&ucli.StringFlag{
+					Name:  "base-url",
+					Usage: "Base URL for HTTP mode (e.g., https://example.com)",
+				},
+				&ucli.StringFlag{
+					Name:  "token",
+					Usage: "Bearer token for HTTP mode examples",
+				},
 			},
 			Action: func(ctx context.Context, cmd *ucli.Command) error {
 				loadedCfg, err := config.LoadFromFile(cmd.String("config"))
@@ -175,13 +232,58 @@ func BuildApp(cfg *config.Config, manifest *mcpclient.Manifest, compiledMode boo
 				if err != nil {
 					return fmt.Errorf("introspecting servers: %w", err)
 				}
-				binaryName := cmd.Root().Name
-				skill.Generate(os.Stdout, manifest, binaryName, cmd.String("name"), cmd.String("description"))
+				mode := cmd.String("mode")
+				switch mode {
+				case "cli":
+					binaryName := cmd.Root().Name
+					skill.Generate(os.Stdout, manifest, binaryName, cmd.String("name"), cmd.String("description"))
+				case "http":
+					baseURL := cmd.String("base-url")
+					if baseURL == "" {
+						baseURL = "http://localhost:8819"
+					}
+					skill.GenerateHTTP(os.Stdout, manifest, cmd.String("name"), cmd.String("description"), baseURL, cmd.String("token"))
+				default:
+					return fmt.Errorf("unknown mode: %s (use cli or http)", mode)
+				}
 				return nil
 			},
 		}
 
-		app.Commands = append(app.Commands, runCmd, compileCmd, validateCmd, skillCmd)
+		serveCmd := &ucli.Command{
+			Name:  "serve",
+			Usage: "Start REST API server",
+			Flags: []ucli.Flag{
+				&ucli.StringFlag{
+					Name:     "config",
+					Aliases:  []string{"c"},
+					Usage:    "Path to config file (JSON or YAML)",
+					Required: true,
+				},
+				&ucli.StringFlag{
+					Name:  "listen",
+					Usage: "Listen address (host:port)",
+					Value: "localhost:8819",
+				},
+				&ucli.StringFlag{
+					Name:  "token",
+					Usage: "Bearer token for authentication",
+				},
+			},
+			Action: func(ctx context.Context, cmd *ucli.Command) error {
+				loadedCfg, err := config.LoadFromFile(cmd.String("config"))
+				if err != nil {
+					return fmt.Errorf("loading config: %w", err)
+				}
+				manifest, err := mcpclient.IntrospectAll(ctx, loadedCfg)
+				if err != nil {
+					return fmt.Errorf("introspecting servers: %w", err)
+				}
+				return serve.Run(ctx, loadedCfg, manifest, cmd.String("listen"), cmd.String("token"))
+			},
+		}
+
+		app.Commands = append(app.Commands, runCmd, compileCmd, validateCmd, skillCmd, serveCmd)
 	}
 
 	return app
