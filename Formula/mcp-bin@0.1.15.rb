@@ -1,4 +1,4 @@
-class McpBin < Formula
+class McpBinAT0115 < Formula
   desc "Turn MCP server tools into CLI commands"
   homepage "https://github.com/volodymyrsmirnov/mcp-bin"
   version "0.1.15"
