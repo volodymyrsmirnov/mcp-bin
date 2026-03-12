@@ -190,7 +190,7 @@ func initialize(ctx context.Context, c *client.Client) error {
 func (c *Client) ListTools(ctx context.Context) ([]mcp.Tool, error) {
 	if _, ok := ctx.Deadline(); !ok {
 		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, 30*time.Second)
+		ctx, cancel = context.WithTimeout(ctx, 3*time.Minute)
 		defer cancel()
 	}
 
