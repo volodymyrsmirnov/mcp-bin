@@ -219,9 +219,11 @@ func schemaToFlags(schema mcpclient.ParsedSchema) []ucli.Flag {
 				Usage: usage,
 			})
 		default:
+			hint := prop.TypeHint()
+			jsonSuffix := " (JSON: " + hint + ")"
 			flags = append(flags, &ucli.StringFlag{
 				Name:     name,
-				Usage:    usage + " (JSON)",
+				Usage:    usage + jsonSuffix,
 				Required: requiredSet[name],
 			})
 		}
@@ -232,7 +234,7 @@ func schemaToFlags(schema mcpclient.ParsedSchema) []ucli.Flag {
 func flagUsage(prop mcpclient.PropertyInfo, required bool) string {
 	desc := prop.Description
 	if desc == "" {
-		desc = fmt.Sprintf("%s value", prop.Type)
+		desc = fmt.Sprintf("%s value", prop.TypeHint())
 	}
 	if required {
 		desc += " (required)"

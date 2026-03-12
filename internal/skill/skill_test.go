@@ -82,12 +82,9 @@ func TestGenerate(t *testing.T) {
 		t.Error("expected write_file tool")
 	}
 
-	// Flags
-	if !strings.Contains(out, "`--url` string (required)") {
-		t.Error("expected --url flag with required")
-	}
-	if !strings.Contains(out, "`--raw` boolean") {
-		t.Error("expected --raw flag")
+	// No per-argument details (LLM should use --help)
+	if strings.Contains(out, "`--url`") {
+		t.Error("skill output should not contain per-argument details")
 	}
 
 	// Usage section
@@ -99,9 +96,6 @@ func TestGenerate(t *testing.T) {
 	}
 	if !strings.Contains(out, "mcp-bin fetch fetch --help") {
 		t.Error("expected tool --help example")
-	}
-	if !strings.Contains(out, "mcp-bin fetch fetch --url <url>") {
-		t.Error("expected fetch usage example")
 	}
 }
 
