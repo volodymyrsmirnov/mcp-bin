@@ -1,0 +1,8 @@
+files:
+  - examples/server.py
+
+servers:
+  embedded:
+    command: python3
+    args:
+      - examples/server.py

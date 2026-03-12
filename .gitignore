@@ -1,0 +1,7 @@
+.idea/
+.claude/settings.local.json
+dist/
+review/
+mcp-bin
+mcp-bin-compiled
+*.exe
