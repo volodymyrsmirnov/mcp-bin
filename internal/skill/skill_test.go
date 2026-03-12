@@ -201,6 +201,46 @@ func TestGenerateEmptyManifest(t *testing.T) {
 	}
 }
 
+func TestGenerateKebabCaseName(t *testing.T) {
+	var buf bytes.Buffer
+	Generate(&buf, testManifest(), "oracle", "Peak Ventures Oracle", "A tool for peak ventures")
+
+	out := buf.String()
+
+	// Front matter name should be kebab-case
+	if !strings.Contains(out, "name: peak-ventures-oracle") {
+		t.Error("expected kebab-case name in front matter")
+	}
+
+	// Header should keep the original human-readable name
+	if !strings.Contains(out, "# Peak Ventures Oracle") {
+		t.Error("expected original name in heading")
+	}
+}
+
+func TestToKebabCase(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"Peak Ventures Oracle", "peak-ventures-oracle"},
+		{"my-tool", "my-tool"},
+		{"My Tool", "my-tool"},
+		{"  spaces  everywhere  ", "spaces-everywhere"},
+		{"MixedCASE", "mixedcase"},
+		{"already-kebab-case", "already-kebab-case"},
+		{"with--multiple---dashes", "with-multiple-dashes"},
+		{"special!@#chars", "special-chars"},
+	}
+
+	for _, tt := range tests {
+		got := toKebabCase(tt.input)
+		if got != tt.want {
+			t.Errorf("toKebabCase(%q) = %q, want %q", tt.input, got, tt.want)
+		}
+	}
+}
+
 func TestFirstLine(t *testing.T) {
 	tests := []struct {
 		input string

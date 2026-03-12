@@ -3,12 +3,16 @@ package skill
 import (
 	"fmt"
 	"io"
+	"regexp"
 	"sort"
 	"strings"
+	"unicode"
 
 	mcpclient "github.com/volodymyrsmirnov/mcp-bin/internal/mcp"
 	"github.com/volodymyrsmirnov/mcp-bin/internal/version"
 )
+
+var nonAlphanumRe = regexp.MustCompile(`[^a-z0-9]+`)
 
 // Generate writes a markdown skill document to w.
 func Generate(w io.Writer, manifest *mcpclient.Manifest, binaryName, skillName, description string) {
@@ -20,9 +24,10 @@ func Generate(w io.Writer, manifest *mcpclient.Manifest, binaryName, skillName, 
 
 	// YAML front matter
 	_, _ = fmt.Fprintln(w, "---")
-	_, _ = fmt.Fprintf(w, "name: %s\n", skillName)
+	_, _ = fmt.Fprintf(w, "name: %s\n", toKebabCase(skillName))
 	_, _ = fmt.Fprintf(w, "description: %s\n", description)
-	_, _ = fmt.Fprintf(w, "version: %s\n", version.Version)
+	_, _ = fmt.Fprintln(w, "metadata:")
+	_, _ = fmt.Fprintf(w, "  version: %s\n", version.Version)
 	_, _ = fmt.Fprintln(w, "---")
 	_, _ = fmt.Fprintln(w)
 
@@ -143,6 +148,13 @@ func autoDescription(serverNames []string) string {
 		return "CLI tool wrapping MCP servers"
 	}
 	return "CLI tool to work with " + strings.Join(serverNames, ", ")
+}
+
+func toKebabCase(s string) string {
+	lower := strings.Map(func(r rune) rune {
+		return unicode.ToLower(r)
+	}, s)
+	return strings.Trim(nonAlphanumRe.ReplaceAllString(lower, "-"), "-")
 }
 
 func firstLine(s string) string {
