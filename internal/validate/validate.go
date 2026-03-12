@@ -1,6 +1,7 @@
 package validate
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -8,23 +9,55 @@ import (
 	"os"
 	"os/exec"
 	"sort"
+	"sync"
 
 	"github.com/volodymyrsmirnov/mcp-bin/internal/config"
 	mcpclient "github.com/volodymyrsmirnov/mcp-bin/internal/mcp"
 )
 
 // Run validates the configuration and optionally tests server connectivity.
-// Returns true if all checks pass.
+// Returns true if all checks pass. Servers are validated in parallel.
 func Run(ctx context.Context, cfg *config.Config, connect bool, w io.Writer) bool {
 	if len(cfg.Files) > 0 {
 		checkFiles(cfg, w)
 	}
 
 	names := sortedServerNames(cfg)
+
+	type serverResult struct {
+		name   string
+		ok     bool
+		output string
+	}
+
+	results := make(chan serverResult, len(cfg.Servers))
+	var wg sync.WaitGroup
+
+	for _, name := range names {
+		wg.Add(1)
+		go func(name string, srv config.ServerConfig) {
+			defer wg.Done()
+			var buf bytes.Buffer
+			ok := checkServer(ctx, name, srv, connect, &buf)
+			results <- serverResult{name: name, ok: ok, output: buf.String()}
+		}(name, cfg.Servers[name])
+	}
+
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+
+	resultMap := make(map[string]serverResult, len(cfg.Servers))
+	for res := range results {
+		resultMap[res.name] = res
+	}
+
 	passed, failed := 0, 0
 	for _, name := range names {
-		srv := cfg.Servers[name]
-		if checkServer(ctx, name, srv, connect, w) {
+		res := resultMap[name]
+		_, _ = fmt.Fprint(w, res.output)
+		if res.ok {
 			passed++
 		} else {
 			failed++
