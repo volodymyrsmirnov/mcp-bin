@@ -222,6 +222,39 @@ func TestGenerateCustomVersion(t *testing.T) {
 	}
 }
 
+func TestGenerateServerDescriptions(t *testing.T) {
+	manifest := &mcpclient.Manifest{
+		Servers: map[string][]mcpclient.ToolSchema{
+			"fetch": {
+				{Name: "fetch", Description: "Fetches a URL", InputSchema: json.RawMessage(`{"type":"object"}`)},
+			},
+			"filesystem": {
+				{Name: "read_file", Description: "Read a file", InputSchema: json.RawMessage(`{"type":"object"}`)},
+			},
+		},
+		Descriptions: map[string]string{
+			"fetch": "HTTP fetching utilities",
+		},
+	}
+
+	var buf bytes.Buffer
+	Generate(&buf, manifest, "bin", "name", "", "")
+	out := buf.String()
+
+	// Server with description should include it
+	if !strings.Contains(out, "HTTP fetching utilities") {
+		t.Error("expected server description for fetch in output")
+	}
+
+	// Server without description should not have extra text between heading and tools
+	fsIdx := strings.Index(out, "## filesystem")
+	readIdx := strings.Index(out, "`read_file`")
+	between := out[fsIdx+len("## filesystem") : readIdx]
+	if strings.Count(strings.TrimSpace(between), "\n") > 0 {
+		t.Error("expected no description paragraph for filesystem")
+	}
+}
+
 func TestToKebabCase(t *testing.T) {
 	tests := []struct {
 		input string
