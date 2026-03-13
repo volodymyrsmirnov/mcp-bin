@@ -27,6 +27,9 @@ func (c *Config) ConfigDir() string {
 
 // ServerConfig defines either a local (command-based) or remote (URL-based) MCP server.
 type ServerConfig struct {
+	// Human-readable description shown in --help and skill documents.
+	Description string `json:"description,omitempty" yaml:"description,omitempty"`
+
 	// Local server fields
 	Command string            `json:"command,omitempty" yaml:"command,omitempty"`
 	Args    []string          `json:"args,omitempty" yaml:"args,omitempty"`
@@ -84,14 +87,15 @@ type CompiledConfig struct {
 }
 
 type CompiledServerConfig struct {
-	Command    string              `json:"command,omitempty" yaml:"command,omitempty"`
-	Args       []string            `json:"args,omitempty" yaml:"args,omitempty"`
-	Env        map[string]EnvValue `json:"env,omitempty" yaml:"env,omitempty"`
-	Cwd        string              `json:"cwd,omitempty" yaml:"cwd,omitempty"`
-	URL        string              `json:"url,omitempty" yaml:"url,omitempty"`
-	Headers    map[string]EnvValue `json:"headers,omitempty" yaml:"headers,omitempty"`
-	AllowTools []string            `json:"allow_tools,omitempty" yaml:"allow_tools,omitempty"`
-	DenyTools  []string            `json:"deny_tools,omitempty" yaml:"deny_tools,omitempty"`
+	Description string              `json:"description,omitempty" yaml:"description,omitempty"`
+	Command     string              `json:"command,omitempty" yaml:"command,omitempty"`
+	Args        []string            `json:"args,omitempty" yaml:"args,omitempty"`
+	Env         map[string]EnvValue `json:"env,omitempty" yaml:"env,omitempty"`
+	Cwd         string              `json:"cwd,omitempty" yaml:"cwd,omitempty"`
+	URL         string              `json:"url,omitempty" yaml:"url,omitempty"`
+	Headers     map[string]EnvValue `json:"headers,omitempty" yaml:"headers,omitempty"`
+	AllowTools  []string            `json:"allow_tools,omitempty" yaml:"allow_tools,omitempty"`
+	DenyTools   []string            `json:"deny_tools,omitempty" yaml:"deny_tools,omitempty"`
 }
 
 // LoadFromFile reads and parses a config file (JSON or YAML, detected by extension).
@@ -156,12 +160,13 @@ func LoadCompiledConfig(data []byte) (*Config, error) {
 
 	for name, srv := range cc.Servers {
 		sc := ServerConfig{
-			Command:    srv.Command,
-			Args:       srv.Args,
-			Cwd:        srv.Cwd,
-			URL:        srv.URL,
-			AllowTools: srv.AllowTools,
-			DenyTools:  srv.DenyTools,
+			Description: srv.Description,
+			Command:     srv.Command,
+			Args:        srv.Args,
+			Cwd:         srv.Cwd,
+			URL:         srv.URL,
+			AllowTools:  srv.AllowTools,
+			DenyTools:   srv.DenyTools,
 		}
 		if srv.Env != nil {
 			sc.Env = make(map[string]string)

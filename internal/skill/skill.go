@@ -44,15 +44,18 @@ func Generate(w io.Writer, manifest *mcpclient.Manifest, binaryName, skillName, 
 	// Server sections
 	for _, serverName := range serverNames {
 		tools := manifest.Servers[serverName]
-		writeServerSection(w, serverName, tools)
+		writeServerSection(w, serverName, manifest.Descriptions[serverName], tools)
 	}
 
 	// Usage examples
 	writeUsageExamples(w, binaryName, serverNames, manifest)
 }
 
-func writeServerSection(w io.Writer, serverName string, tools []mcpclient.ToolSchema) {
+func writeServerSection(w io.Writer, serverName, description string, tools []mcpclient.ToolSchema) {
 	_, _ = fmt.Fprintf(w, "## %s\n\n", serverName)
+	if description != "" {
+		_, _ = fmt.Fprintf(w, "%s\n\n", description)
+	}
 
 	for _, tool := range sortTools(tools) {
 		desc := firstLine(tool.Description)

@@ -31,9 +31,13 @@ func buildCommandsFromConfig(cfg *config.Config) []*ucli.Command {
 	for serverName := range cfg.Servers {
 		srvCfg := cfg.Servers[serverName]
 		name := serverName
+		usage := srvCfg.Description
+		if usage == "" {
+			usage = fmt.Sprintf("Commands for %s server", name)
+		}
 		cmd := &ucli.Command{
 			Name:            name,
-			Usage:           fmt.Sprintf("Commands for %s server", name),
+			Usage:           usage,
 			SkipFlagParsing: true,
 			Action: func(ctx context.Context, cmd *ucli.Command) error {
 				return handleServerCommand(ctx, cmd, name, &srvCfg)
@@ -117,9 +121,13 @@ func handleServerCommand(ctx context.Context, cmd *ucli.Command, serverName stri
 
 // buildServerCommandFromSchemas builds a server command with pre-known tool schemas (compiled mode).
 func buildServerCommandFromSchemas(serverName string, serverCfg *config.ServerConfig, tools []mcpclient.ToolSchema) *ucli.Command {
+	usage := serverCfg.Description
+	if usage == "" {
+		usage = fmt.Sprintf("Commands for %s server", serverName)
+	}
 	cmd := &ucli.Command{
 		Name:  serverName,
-		Usage: fmt.Sprintf("Commands for %s server", serverName),
+		Usage: usage,
 	}
 
 	for _, tool := range tools {

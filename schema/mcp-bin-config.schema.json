@@ -29,6 +29,10 @@
       "type": "object",
       "description": "Configuration for a single MCP server. Must specify either 'command' for local stdio-based servers or 'url' for remote HTTP-based servers, but not both.",
       "properties": {
+        "description": {
+          "type": "string",
+          "description": "Human-readable description of the server, shown in --help output and skill documents."
+        },
         "command": {
           "type": "string",
           "description": "Executable command to start a local MCP server using stdio transport. The server process is spawned as a child process and communicates via stdin/stdout."

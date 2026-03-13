@@ -53,12 +53,13 @@ func BuildCompiledConfig(c *Config) *CompiledConfig {
 
 	for name, srv := range c.Servers {
 		cs := CompiledServerConfig{
-			Command:    srv.Command,
-			Args:       srv.Args,
-			Cwd:        srv.ExplicitCwd(),
-			URL:        srv.URL,
-			AllowTools: srv.AllowTools,
-			DenyTools:  srv.DenyTools,
+			Description: srv.Description,
+			Command:     srv.Command,
+			Args:        srv.Args,
+			Cwd:         srv.ExplicitCwd(),
+			URL:         srv.URL,
+			AllowTools:  srv.AllowTools,
+			DenyTools:   srv.DenyTools,
 		}
 		if srv.Env != nil {
 			cs.Env = make(map[string]EnvValue)

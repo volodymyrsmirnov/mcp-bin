@@ -19,7 +19,8 @@ type ToolSchema struct {
 
 // Manifest holds pre-introspected tool schemas for all servers.
 type Manifest struct {
-	Servers map[string][]ToolSchema `json:"servers"`
+	Servers      map[string][]ToolSchema `json:"servers"`
+	Descriptions map[string]string       `json:"descriptions,omitempty"`
 }
 
 // ToolsToSchemas converts mcp.Tool list to ToolSchema list.
@@ -85,13 +86,19 @@ func IntrospectAll(ctx context.Context, cfg *config.Config) (*Manifest, error) {
 	}()
 
 	manifest := &Manifest{
-		Servers: make(map[string][]ToolSchema),
+		Servers:      make(map[string][]ToolSchema),
+		Descriptions: make(map[string]string),
 	}
 	for res := range results {
 		if res.err != nil {
 			return nil, res.err
 		}
 		manifest.Servers[res.name] = res.schemas
+	}
+	for name, srv := range cfg.Servers {
+		if srv.Description != "" {
+			manifest.Descriptions[name] = srv.Description
+		}
 	}
 
 	return manifest, nil
