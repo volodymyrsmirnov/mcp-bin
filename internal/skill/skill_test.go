@@ -37,7 +37,7 @@ func testManifest() *mcpclient.Manifest {
 
 func TestGenerate(t *testing.T) {
 	var buf bytes.Buffer
-	Generate(&buf, testManifest(), "mcp-bin", "my-tool", "")
+	Generate(&buf, testManifest(), "mcp-bin", "my-tool", "", "")
 
 	out := buf.String()
 
@@ -101,7 +101,7 @@ func TestGenerate(t *testing.T) {
 
 func TestGenerateCustomDescription(t *testing.T) {
 	var buf bytes.Buffer
-	Generate(&buf, testManifest(), "my-binary", "my-tool", "Custom description here")
+	Generate(&buf, testManifest(), "my-binary", "my-tool", "Custom description here", "")
 
 	out := buf.String()
 	if !strings.Contains(out, "description: Custom description here") {
@@ -141,7 +141,7 @@ func TestGenerateAutoDescription(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			var buf bytes.Buffer
 			manifest := &mcpclient.Manifest{Servers: tt.servers}
-			Generate(&buf, manifest, "bin", "name", "")
+			Generate(&buf, manifest, "bin", "name", "", "")
 			if !strings.Contains(buf.String(), "description: "+tt.want) {
 				t.Errorf("expected description %q in output:\n%s", tt.want, buf.String())
 			}
@@ -163,7 +163,7 @@ func TestGenerateSortOrder(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	Generate(&buf, manifest, "bin", "name", "desc")
+	Generate(&buf, manifest, "bin", "name", "desc", "")
 	out := buf.String()
 
 	// alpha should come before zebra
@@ -184,7 +184,7 @@ func TestGenerateSortOrder(t *testing.T) {
 func TestGenerateEmptyManifest(t *testing.T) {
 	var buf bytes.Buffer
 	manifest := &mcpclient.Manifest{Servers: map[string][]mcpclient.ToolSchema{}}
-	Generate(&buf, manifest, "bin", "name", "")
+	Generate(&buf, manifest, "bin", "name", "", "")
 
 	out := buf.String()
 	if !strings.Contains(out, "---") {
@@ -197,7 +197,7 @@ func TestGenerateEmptyManifest(t *testing.T) {
 
 func TestGenerateKebabCaseName(t *testing.T) {
 	var buf bytes.Buffer
-	Generate(&buf, testManifest(), "oracle", "Peak Ventures Oracle", "A tool for peak ventures")
+	Generate(&buf, testManifest(), "oracle", "Peak Ventures Oracle", "A tool for peak ventures", "")
 
 	out := buf.String()
 
@@ -209,6 +209,16 @@ func TestGenerateKebabCaseName(t *testing.T) {
 	// Header should keep the original human-readable name
 	if !strings.Contains(out, "# Peak Ventures Oracle") {
 		t.Error("expected original name in heading")
+	}
+}
+
+func TestGenerateCustomVersion(t *testing.T) {
+	var buf bytes.Buffer
+	Generate(&buf, testManifest(), "bin", "name", "", "2.0.0")
+
+	out := buf.String()
+	if !strings.Contains(out, "version: 2.0.0") {
+		t.Errorf("expected custom version in front matter, got:\n%s", out)
 	}
 }
 

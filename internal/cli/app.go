@@ -67,10 +67,14 @@ func BuildApp(cfg *config.Config, manifest *mcpclient.Manifest, compiledMode boo
 					Name:  "description",
 					Usage: "Skill description (auto-generated if omitted)",
 				},
+				&ucli.StringFlag{
+					Name:  "version",
+					Usage: "Skill version (defaults to application version)",
+				},
 			},
 			Action: func(ctx context.Context, cmd *ucli.Command) error {
 				binaryName := cmd.Root().Name
-				skill.Generate(os.Stdout, manifest, binaryName, cmd.String("name"), cmd.String("description"))
+				skill.Generate(os.Stdout, manifest, binaryName, cmd.String("name"), cmd.String("description"), cmd.String("version"))
 				return nil
 			},
 		}
@@ -165,6 +169,10 @@ func BuildApp(cfg *config.Config, manifest *mcpclient.Manifest, compiledMode boo
 					Name:  "description",
 					Usage: "Skill description (auto-generated if omitted)",
 				},
+				&ucli.StringFlag{
+					Name:  "version",
+					Usage: "Skill version (defaults to application version)",
+				},
 			},
 			Action: func(ctx context.Context, cmd *ucli.Command) error {
 				loadedCfg, err := config.LoadFromFile(cmd.String("config"))
@@ -176,7 +184,7 @@ func BuildApp(cfg *config.Config, manifest *mcpclient.Manifest, compiledMode boo
 					return fmt.Errorf("introspecting servers: %w", err)
 				}
 				binaryName := cmd.Root().Name
-				skill.Generate(os.Stdout, manifest, binaryName, cmd.String("name"), cmd.String("description"))
+				skill.Generate(os.Stdout, manifest, binaryName, cmd.String("name"), cmd.String("description"), cmd.String("version"))
 				return nil
 			},
 		}

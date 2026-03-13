@@ -15,11 +15,16 @@ import (
 var nonAlphanumRe = regexp.MustCompile(`[^a-z0-9]+`)
 
 // Generate writes a markdown skill document to w.
-func Generate(w io.Writer, manifest *mcpclient.Manifest, binaryName, skillName, description string) {
+// If skillVersion is empty, the application version is used.
+func Generate(w io.Writer, manifest *mcpclient.Manifest, binaryName, skillName, description, skillVersion string) {
 	serverNames := sortedServerNames(manifest)
 
 	if description == "" {
 		description = autoDescription(serverNames)
+	}
+
+	if skillVersion == "" {
+		skillVersion = version.Version
 	}
 
 	// YAML front matter
@@ -27,7 +32,7 @@ func Generate(w io.Writer, manifest *mcpclient.Manifest, binaryName, skillName, 
 	_, _ = fmt.Fprintf(w, "name: %s\n", toKebabCase(skillName))
 	_, _ = fmt.Fprintf(w, "description: %s\n", description)
 	_, _ = fmt.Fprintln(w, "metadata:")
-	_, _ = fmt.Fprintf(w, "  version: %s\n", version.Version)
+	_, _ = fmt.Fprintf(w, "  version: %s\n", skillVersion)
 	_, _ = fmt.Fprintln(w, "---")
 	_, _ = fmt.Fprintln(w)
 
