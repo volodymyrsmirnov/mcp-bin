@@ -91,8 +91,8 @@ func writeUsageExamples(w io.Writer, binaryName string, serverNames []string, ma
 		_, _ = fmt.Fprintln(w)
 	}
 
-	// Tool invocation examples
-	for _, serverName := range serverNames {
+	// Tool invocation examples (skip first server, already shown above)
+	for _, serverName := range serverNames[min(1, len(serverNames)):] {
 		tools := manifest.Servers[serverName]
 		if len(tools) == 0 {
 			continue

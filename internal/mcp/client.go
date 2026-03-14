@@ -45,17 +45,20 @@ func connectStdio(ctx context.Context, cfg config.ServerConfig) (*Client, error)
 
 	var opts []transport.StdioOption
 	opts = append(opts, transport.WithCommandLogger(&nopLogger{}))
-	if cfg.Cwd != "" {
-		cwd := cfg.Cwd
-		opts = append(opts, transport.WithCommandFunc(
-			func(ctx context.Context, command string, cmdEnv []string, args []string) (*exec.Cmd, error) {
-				cmd := exec.CommandContext(ctx, command, args...)
+	// Always use a custom command func to ensure the child process inherits
+	// the parent's full environment. Without this, when env vars are configured
+	// the transport would set cmd.Env to only those vars, stripping PATH etc.
+	cwd := cfg.Cwd
+	opts = append(opts, transport.WithCommandFunc(
+		func(ctx context.Context, command string, cmdEnv []string, args []string) (*exec.Cmd, error) {
+			cmd := exec.CommandContext(ctx, command, args...)
+			if cwd != "" {
 				cmd.Dir = cwd
-				cmd.Env = append(os.Environ(), cmdEnv...)
-				return cmd, nil
-			},
-		))
-	}
+			}
+			cmd.Env = append(os.Environ(), cmdEnv...)
+			return cmd, nil
+		},
+	))
 
 	t := transport.NewStdioWithOptions(cfg.Command, env, cfg.Args, opts...)
 
