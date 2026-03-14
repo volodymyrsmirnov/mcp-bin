@@ -452,6 +452,40 @@ func TestParseToolArgsPassthroughEmpty(t *testing.T) {
 	}
 }
 
+func TestParseToolArgsEndOfOptions(t *testing.T) {
+	schema := mcpclient.ParsedSchema{
+		Properties: map[string]mcpclient.PropertyInfo{
+			"name": {Type: "string"},
+		},
+	}
+
+	result, err := parseToolArgs([]string{"--name", "hello", "--"}, schema)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result["name"] != "hello" {
+		t.Errorf("expected 'hello', got %v", result["name"])
+	}
+	if len(result) != 1 {
+		t.Errorf("expected 1 arg (-- should stop parsing), got %d", len(result))
+	}
+}
+
+func TestParseToolArgsEndOfOptionsPassthrough(t *testing.T) {
+	emptySchema := mcpclient.ParsedSchema{Properties: map[string]mcpclient.PropertyInfo{}}
+
+	result, err := parseToolArgs([]string{"--path", ".", "--"}, emptySchema)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result["path"] != "." {
+		t.Errorf("expected '.', got %v", result["path"])
+	}
+	if len(result) != 1 {
+		t.Errorf("expected 1 arg, got %d", len(result))
+	}
+}
+
 func TestAutoParseValue(t *testing.T) {
 	tests := []struct {
 		input string
@@ -492,7 +526,7 @@ func TestBuildToolCommandEmptySchema(t *testing.T) {
 		InputSchema: json.RawMessage(`{"type":"object"}`),
 	}
 
-	cmd := buildToolCommand("test-server", serverCfg, tool)
+	cmd := buildToolCommand("test-server", serverCfg, tool, nil)
 	if !cmd.SkipFlagParsing {
 		t.Error("expected SkipFlagParsing to be true for empty schema")
 	}
@@ -506,7 +540,7 @@ func TestBuildToolCommandWithSchema(t *testing.T) {
 		InputSchema: json.RawMessage(`{"type":"object","properties":{"name":{"type":"string"}}}`),
 	}
 
-	cmd := buildToolCommand("test-server", serverCfg, tool)
+	cmd := buildToolCommand("test-server", serverCfg, tool, nil)
 	if cmd.SkipFlagParsing {
 		t.Error("expected SkipFlagParsing to be false for non-empty schema")
 	}
@@ -520,7 +554,7 @@ func TestBuildToolCommandDefaultDescription(t *testing.T) {
 		InputSchema: json.RawMessage(`{"type":"object","properties":{"x":{"type":"string"}}}`),
 	}
 
-	cmd := buildToolCommand("test-server", serverCfg, tool)
+	cmd := buildToolCommand("test-server", serverCfg, tool, nil)
 	if cmd.Description != "Call the my_tool tool" {
 		t.Errorf("expected default description, got %q", cmd.Description)
 	}
@@ -534,7 +568,7 @@ func TestBuildToolCommandFlags(t *testing.T) {
 		InputSchema: json.RawMessage(`{"type":"object","properties":{"name":{"type":"string"},"count":{"type":"integer"}},"required":["name"]}`),
 	}
 
-	cmd := buildToolCommand("srv", serverCfg, tool)
+	cmd := buildToolCommand("srv", serverCfg, tool, nil)
 	if len(cmd.Flags) != 2 {
 		t.Fatalf("expected 2 flags, got %d", len(cmd.Flags))
 	}

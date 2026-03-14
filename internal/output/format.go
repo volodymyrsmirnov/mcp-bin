@@ -11,13 +11,18 @@ import (
 
 // FormatResult writes the tool call result to stdout.
 func FormatResult(result *mcp.CallToolResult, jsonMode bool) error {
+	return FormatResultTo(os.Stdout, os.Stderr, result, jsonMode)
+}
+
+// FormatResultTo writes the tool call result to the given writers.
+func FormatResultTo(w, errW io.Writer, result *mcp.CallToolResult, jsonMode bool) error {
 	if result == nil {
 		return fmt.Errorf("nil result")
 	}
 	if jsonMode {
-		return formatJSON(result, os.Stdout)
+		return formatJSON(result, w)
 	}
-	return formatText(result, os.Stdout)
+	return formatText(result, w, errW)
 }
 
 func formatJSON(result *mcp.CallToolResult, w io.Writer) error {
@@ -26,11 +31,11 @@ func formatJSON(result *mcp.CallToolResult, w io.Writer) error {
 	return enc.Encode(result)
 }
 
-func formatText(result *mcp.CallToolResult, w io.Writer) error {
+func formatText(result *mcp.CallToolResult, w, errW io.Writer) error {
 	if result.IsError {
 		for _, content := range result.Content {
 			if tc, ok := content.(mcp.TextContent); ok {
-				_, _ = fmt.Fprintf(os.Stderr, "Error: %s\n", tc.Text)
+				_, _ = fmt.Fprintf(errW, "Error: %s\n", tc.Text)
 			}
 		}
 		return fmt.Errorf("tool returned an error")

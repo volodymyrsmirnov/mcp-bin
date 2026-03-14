@@ -3,6 +3,7 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sync"
 
@@ -89,11 +90,16 @@ func IntrospectAll(ctx context.Context, cfg *config.Config) (*Manifest, error) {
 		Servers:      make(map[string][]ToolSchema),
 		Descriptions: make(map[string]string),
 	}
+	var errs []error
 	for res := range results {
 		if res.err != nil {
-			return nil, res.err
+			errs = append(errs, res.err)
+			continue
 		}
 		manifest.Servers[res.name] = res.schemas
+	}
+	if len(errs) > 0 {
+		return nil, errors.Join(errs...)
 	}
 	for name, srv := range cfg.Servers {
 		if srv.Description != "" {

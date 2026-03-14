@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 
 	"github.com/volodymyrsmirnov/mcp-bin/internal/config"
 	mcpclient "github.com/volodymyrsmirnov/mcp-bin/internal/mcp"
@@ -54,6 +55,13 @@ func Compile(ctx context.Context, cfg *config.Config, outputPath string) (err er
 		}
 	}()
 
+	// Guard against overwriting the source binary
+	absExe, _ := filepath.Abs(exePath)
+	absOut, _ := filepath.Abs(outputPath)
+	if absExe == absOut {
+		return fmt.Errorf("output path %q is the same as the source binary; use a different --output", outputPath)
+	}
+
 	outFile, err := os.OpenFile(outputPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0755)
 	if err != nil {
 		return fmt.Errorf("creating output file: %w", err)
@@ -61,6 +69,10 @@ func Compile(ctx context.Context, cfg *config.Config, outputPath string) (err er
 	defer func() {
 		if cerr := outFile.Close(); cerr != nil && err == nil {
 			err = cerr
+		}
+		// Remove partially written output on error
+		if err != nil {
+			_ = os.Remove(outputPath)
 		}
 	}()
 

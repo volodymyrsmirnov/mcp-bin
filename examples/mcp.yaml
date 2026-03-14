@@ -1,15 +1,18 @@
 servers:
   fetch:
+    description: "Fetch web content"
     command: uvx
     args:
       - mcp-server-fetch
   time:
+    description: "Time utilities"
     command: uvx
     args:
       - mcp-server-time
   filesystem:
+    description: "File system operations"
     command: npx
     args:
       - "-y"
       - mcp-server-filesystem
-      - "."
+      - "./examples"

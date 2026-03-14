@@ -50,8 +50,8 @@ func TestFormatTextPlain(t *testing.T) {
 		},
 	}
 
-	var buf bytes.Buffer
-	err := formatText(result, &buf)
+	var buf, errBuf bytes.Buffer
+	err := formatText(result, &buf, &errBuf)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -71,8 +71,8 @@ func TestFormatTextJSON(t *testing.T) {
 		},
 	}
 
-	var buf bytes.Buffer
-	err := formatText(result, &buf)
+	var buf, errBuf bytes.Buffer
+	err := formatText(result, &buf, &errBuf)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -98,8 +98,8 @@ func TestFormatTextImage(t *testing.T) {
 		},
 	}
 
-	var buf bytes.Buffer
-	err := formatText(result, &buf)
+	var buf, errBuf bytes.Buffer
+	err := formatText(result, &buf, &errBuf)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -124,10 +124,17 @@ func TestFormatTextError(t *testing.T) {
 		},
 	}
 
-	var buf bytes.Buffer
-	err := formatText(result, &buf)
+	var buf, errBuf bytes.Buffer
+	err := formatText(result, &buf, &errBuf)
 	if err == nil {
 		t.Error("expected error for isError result")
+	}
+	// Error content should go to errW, not w
+	if !strings.Contains(errBuf.String(), "something went wrong") {
+		t.Errorf("expected error text in errW, got %q", errBuf.String())
+	}
+	if buf.Len() != 0 {
+		t.Errorf("expected no output in w for error result, got %q", buf.String())
 	}
 }
 
@@ -145,8 +152,8 @@ func TestFormatTextMultipleContent(t *testing.T) {
 		},
 	}
 
-	var buf bytes.Buffer
-	err := formatText(result, &buf)
+	var buf, errBuf bytes.Buffer
+	err := formatText(result, &buf, &errBuf)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -162,8 +169,8 @@ func TestFormatTextEmptyContent(t *testing.T) {
 		Content: []mcp.Content{},
 	}
 
-	var buf bytes.Buffer
-	err := formatText(result, &buf)
+	var buf, errBuf bytes.Buffer
+	err := formatText(result, &buf, &errBuf)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -184,8 +191,6 @@ func TestFormatResultJSONMode(t *testing.T) {
 	}
 
 	// FormatResult writes to os.Stdout, so we just verify no error
-	// The actual output goes to stdout which we can't easily capture here
-	// but the function delegates to formatJSON which is already tested
 	err := FormatResult(result, true)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -208,6 +213,36 @@ func TestFormatResultTextMode(t *testing.T) {
 	}
 }
 
+func TestFormatResultNilResult(t *testing.T) {
+	err := FormatResult(nil, false)
+	if err == nil {
+		t.Error("expected error for nil result")
+	}
+	if !strings.Contains(err.Error(), "nil result") {
+		t.Errorf("expected 'nil result' error, got %v", err)
+	}
+}
+
+func TestFormatResultToWriters(t *testing.T) {
+	result := &mcp.CallToolResult{
+		Content: []mcp.Content{
+			mcp.TextContent{
+				Type: "text",
+				Text: "output text",
+			},
+		},
+	}
+
+	var out, errOut bytes.Buffer
+	err := FormatResultTo(&out, &errOut, result, false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(out.String(), "output text") {
+		t.Errorf("expected output in writer, got %q", out.String())
+	}
+}
+
 func TestFormatTextEmbeddedResource(t *testing.T) {
 	result := &mcp.CallToolResult{
 		Content: []mcp.Content{
@@ -222,8 +257,8 @@ func TestFormatTextEmbeddedResource(t *testing.T) {
 		},
 	}
 
-	var buf bytes.Buffer
-	err := formatText(result, &buf)
+	var buf, errBuf bytes.Buffer
+	err := formatText(result, &buf, &errBuf)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

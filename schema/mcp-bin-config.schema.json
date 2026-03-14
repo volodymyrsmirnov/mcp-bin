@@ -10,7 +10,7 @@
       "description": "File and directory paths to embed in compiled binaries. Directories are recursively included. At runtime, embedded content is extracted to a cache directory (~/.cache/mcp-bin/<hash>/dirs/) and paths in the config are automatically patched to point to the extracted location.",
       "items": {
         "type": "string",
-        "description": "Absolute path to a file or directory to embed."
+        "description": "Relative or absolute path to a file or directory to embed."
       },
       "default": []
     },
@@ -19,7 +19,8 @@
       "description": "Map of server names to their configurations. Each key becomes a CLI subcommand name (e.g., 'my-server' becomes './mcp-bin my-server <tool>').",
       "additionalProperties": {
         "$ref": "#/$defs/serverConfig"
-      }
+      },
+      "minProperties": 1
     }
   },
   "required": ["servers"],
@@ -35,7 +36,8 @@
         },
         "command": {
           "type": "string",
-          "description": "Executable command to start a local MCP server using stdio transport. The server process is spawned as a child process and communicates via stdin/stdout."
+          "description": "Executable command to start a local MCP server using stdio transport. The server process is spawned as a child process and communicates via stdin/stdout.",
+          "minLength": 1
         },
         "args": {
           "type": "array",
@@ -58,7 +60,7 @@
         "url": {
           "type": "string",
           "description": "URL endpoint for a remote MCP server. The client first attempts Streamable HTTP transport, then falls back to SSE (Server-Sent Events) if that fails.",
-          "format": "uri"
+          "minLength": 1
         },
         "headers": {
           "type": "object",

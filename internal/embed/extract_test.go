@@ -115,8 +115,10 @@ func TestExtractToCacheCacheHit(t *testing.T) {
 	}
 }
 
-func TestZipHash(t *testing.T) {
+func TestExtractToCacheContentAddressed(t *testing.T) {
 	dir := t.TempDir()
+	testHome := t.TempDir()
+	t.Setenv("HOME", testHome)
 
 	// Create first binary with zip
 	path1 := filepath.Join(dir, "bin1")
@@ -134,21 +136,12 @@ func TestZipHash(t *testing.T) {
 
 	info1 := &ZipInfo{ExePath: path1, ZipStart: zipStart1, ZipSize: int64(zip1.Len())}
 
-	hash1, err := zipHash(info1)
+	paths1, err := ExtractToCache(info1)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if hash1 == "" {
-		t.Error("hash should not be empty")
-	}
 
-	// Same content should produce same hash
-	hash1b, _ := zipHash(info1)
-	if hash1 != hash1b {
-		t.Errorf("same zip should produce same hash: %s vs %s", hash1, hash1b)
-	}
-
-	// Different zip content should produce different hash
+	// Different zip content should produce different cache path
 	path2 := filepath.Join(dir, "bin2")
 	var zip2 bytes.Buffer
 	w2 := zip.NewWriter(&zip2)
@@ -164,17 +157,13 @@ func TestZipHash(t *testing.T) {
 
 	info2 := &ZipInfo{ExePath: path2, ZipStart: zipStart2, ZipSize: int64(zip2.Len())}
 
-	hash2, _ := zipHash(info2)
-	if hash1 == hash2 {
-		t.Error("different zip content should produce different hash")
+	paths2, err := ExtractToCache(info2)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
-}
 
-func TestZipHashNotFound(t *testing.T) {
-	info := &ZipInfo{ExePath: "/nonexistent/file", ZipStart: 0, ZipSize: 10}
-	_, err := zipHash(info)
-	if err == nil {
-		t.Error("expected error for missing file")
+	if paths1.Root == paths2.Root {
+		t.Error("different zip content should produce different cache paths")
 	}
 }
 
@@ -210,9 +199,12 @@ func TestExtractFile(t *testing.T) {
 	dir := t.TempDir()
 	dest := filepath.Join(dir, "extracted", "test.txt")
 
-	err := extractFile(reader.File[0], dest)
+	n, err := extractFile(reader.File[0], dest)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	if n != int64(len("test content")) {
+		t.Errorf("expected %d bytes written, got %d", len("test content"), n)
 	}
 
 	data, err := os.ReadFile(dest)
@@ -301,6 +293,15 @@ func TestExtractToCacheZipSlipPrevention(t *testing.T) {
 	paths, err := ExtractToCache(info)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Verify benign entry was still extracted
+	configData, err := os.ReadFile(paths.Config)
+	if err != nil {
+		t.Fatalf("benign config.json not extracted: %v", err)
+	}
+	if string(configData) != "{}" {
+		t.Errorf("wrong config content: %s", string(configData))
 	}
 
 	// The evil file should not exist outside the cache

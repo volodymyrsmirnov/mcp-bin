@@ -65,7 +65,7 @@ func CreateZipArchive(w io.Writer, files map[string][]byte, paths []string, base
 	return nil
 }
 
-func addFileToZip(w *zip.Writer, srcPath, zipPath string) (err error) {
+func addFileToZip(w *zip.Writer, srcPath, zipPath string) error {
 	info, err := os.Lstat(srcPath)
 	if err != nil {
 		return err
@@ -73,31 +73,7 @@ func addFileToZip(w *zip.Writer, srcPath, zipPath string) (err error) {
 	if info.Mode()&os.ModeSymlink != 0 {
 		return fmt.Errorf("symlinks are not allowed: %s", srcPath)
 	}
-
-	header, err := zip.FileInfoHeader(info)
-	if err != nil {
-		return err
-	}
-	header.Name = filepath.ToSlash(zipPath)
-	header.Method = zip.Deflate
-
-	writer, err := w.CreateHeader(header)
-	if err != nil {
-		return err
-	}
-
-	f, err := os.Open(srcPath)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		if cerr := f.Close(); cerr != nil && err == nil {
-			err = cerr
-		}
-	}()
-
-	_, err = io.Copy(writer, f)
-	return err
+	return addFileEntryToZip(w, srcPath, zipPath, info)
 }
 
 func addDirToZip(w *zip.Writer, srcDir, zipPrefix string) error {
@@ -142,7 +118,7 @@ func addFileEntryToZip(w *zip.Writer, path, zipPath string, info os.FileInfo) (e
 	if err != nil {
 		return err
 	}
-	header.Name = zipPath
+	header.Name = filepath.ToSlash(zipPath)
 	header.Method = zip.Deflate
 
 	writer, err := w.CreateHeader(header)

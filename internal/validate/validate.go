@@ -8,7 +8,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
-	"sort"
+	"sync"
 
 	"github.com/volodymyrsmirnov/mcp-bin/internal/config"
 	mcpclient "github.com/volodymyrsmirnov/mcp-bin/internal/mcp"
@@ -21,7 +21,7 @@ func Run(ctx context.Context, cfg *config.Config, connect bool, w io.Writer) boo
 		checkFiles(cfg, w)
 	}
 
-	names := sortedServerNames(cfg)
+	names := config.SortedServerNames(cfg)
 
 	type serverResult struct {
 		name   string
@@ -30,18 +30,25 @@ func Run(ctx context.Context, cfg *config.Config, connect bool, w io.Writer) boo
 	}
 
 	results := make(chan serverResult, len(cfg.Servers))
+	var wg sync.WaitGroup
 
 	for _, name := range names {
+		wg.Add(1)
 		go func(name string, srv config.ServerConfig) {
+			defer wg.Done()
 			var buf bytes.Buffer
 			ok := checkServer(ctx, name, srv, connect, &buf)
 			results <- serverResult{name: name, ok: ok, output: buf.String()}
 		}(name, cfg.Servers[name])
 	}
 
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+
 	resultMap := make(map[string]serverResult, len(cfg.Servers))
-	for range len(cfg.Servers) {
-		res := <-results
+	for res := range results {
 		resultMap[res.name] = res
 	}
 
@@ -63,8 +70,12 @@ func Run(ctx context.Context, cfg *config.Config, connect bool, w io.Writer) boo
 func checkServer(ctx context.Context, name string, srv config.ServerConfig, connect bool, w io.Writer) bool {
 	if srv.IsLocal() {
 		_, _ = fmt.Fprintf(w, "Validating server %q (local: %s)...\n", name, srv.Command)
-	} else {
+	} else if srv.IsRemote() {
 		_, _ = fmt.Fprintf(w, "Validating server %q (remote: %s)...\n", name, srv.URL)
+	} else {
+		_, _ = fmt.Fprintf(w, "Validating server %q...\n", name)
+		fail(w, "server has neither command nor url configured")
+		return false
 	}
 
 	ok := true
@@ -183,15 +194,6 @@ func checkConnectivity(ctx context.Context, name string, srv config.ServerConfig
 	}
 
 	return true
-}
-
-func sortedServerNames(cfg *config.Config) []string {
-	names := make([]string, 0, len(cfg.Servers))
-	for name := range cfg.Servers {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	return names
 }
 
 func pass(w io.Writer, msg string) {

@@ -31,8 +31,9 @@ func TestValidateAgainstSchema(t *testing.T) {
 			data: `{"servers": {"s1": {"url": "https://example.com", "headers": {"Authorization": "Bearer token"}}}}`,
 		},
 		{
-			name: "valid JSON empty servers map",
-			data: `{"servers": {}}`,
+			name:    "JSON empty servers map",
+			data:    `{"servers": {}}`,
+			wantErr: true,
 		},
 		{
 			name: "valid JSON multiple servers",

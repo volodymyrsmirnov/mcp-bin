@@ -51,33 +51,32 @@ func buildCommandsFromConfig(cfg *config.Config) []*ucli.Command {
 // handleServerCommand handles all invocations of a server command in dev mode.
 // It introspects the server, builds a urfave/cli command tree from the discovered
 // schemas, and runs it. This produces identical help output to compiled mode.
+// The introspection connection is reused for tool execution to avoid connecting twice.
 func handleServerCommand(ctx context.Context, cmd *ucli.Command, serverName string, serverCfg *config.ServerConfig) error {
 	args := cmd.Args().Slice()
 
-	// Connect and introspect
+	// Connect and introspect — keep client alive for tool execution
 	client, err := mcpclient.Connect(ctx, *serverCfg)
 	if err != nil {
 		return fmt.Errorf("connecting to %s: %w", serverName, err)
 	}
+	defer client.Close()
 
 	tools, err := client.ListTools(ctx)
 	if err != nil {
-		client.Close()
 		return fmt.Errorf("listing tools from %s: %w", serverName, err)
 	}
 
 	schemas, err := mcpclient.ToolsToSchemas(tools)
 	if err != nil {
-		client.Close()
 		return err
 	}
 
 	schemas = mcpclient.FilterSchemas(schemas, serverCfg.AllowTools, serverCfg.DenyTools)
-	client.Close()
 
-	// Build urfave/cli command tree (same as compiled mode) and run it.
-	// This delegates help rendering to urfave/cli for identical output.
-	srvCmd := buildServerCommandFromSchemas(serverName, serverCfg, schemas)
+	// Build urfave/cli command tree and run it.
+	// Pass the existing client so tool actions reuse the connection.
+	srvCmd := buildServerCommandFromSchemasWithClient(serverName, serverCfg, schemas, client)
 
 	wrapper := &ucli.Command{
 		Name: cmd.Root().Name,
@@ -121,6 +120,13 @@ func handleServerCommand(ctx context.Context, cmd *ucli.Command, serverName stri
 
 // buildServerCommandFromSchemas builds a server command with pre-known tool schemas (compiled mode).
 func buildServerCommandFromSchemas(serverName string, serverCfg *config.ServerConfig, tools []mcpclient.ToolSchema) *ucli.Command {
+	return buildServerCommandFromSchemasWithClient(serverName, serverCfg, tools, nil)
+}
+
+// buildServerCommandFromSchemasWithClient builds a server command, optionally reusing an existing
+// client connection for tool execution (dev mode). If client is nil, a new connection is
+// established on each tool invocation (compiled mode).
+func buildServerCommandFromSchemasWithClient(serverName string, serverCfg *config.ServerConfig, tools []mcpclient.ToolSchema, existingClient *mcpclient.Client) *ucli.Command {
 	usage := serverCfg.Description
 	if usage == "" {
 		usage = fmt.Sprintf("Commands for %s server", serverName)
@@ -132,14 +138,14 @@ func buildServerCommandFromSchemas(serverName string, serverCfg *config.ServerCo
 
 	for _, tool := range tools {
 		t := tool
-		toolCmd := buildToolCommand(serverName, serverCfg, t)
+		toolCmd := buildToolCommand(serverName, serverCfg, t, existingClient)
 		cmd.Commands = append(cmd.Commands, toolCmd)
 	}
 
 	return cmd
 }
 
-func buildToolCommand(serverName string, serverCfg *config.ServerConfig, tool mcpclient.ToolSchema) *ucli.Command {
+func buildToolCommand(serverName string, serverCfg *config.ServerConfig, tool mcpclient.ToolSchema, existingClient *mcpclient.Client) *ucli.Command {
 	schema := mcpclient.ParseInputSchema(tool.InputSchema)
 	flags := schemaToFlags(schema)
 	passthrough := len(schema.Properties) == 0
@@ -174,11 +180,16 @@ func buildToolCommand(serverName string, serverCfg *config.ServerConfig, tool mc
 				}
 			}
 
-			client, err := mcpclient.Connect(ctx, *serverCfg)
-			if err != nil {
-				return fmt.Errorf("connecting to %s: %w", serverName, err)
+			// Reuse existing client (dev mode) or establish a new connection (compiled mode)
+			client := existingClient
+			if client == nil {
+				var err error
+				client, err = mcpclient.Connect(ctx, *serverCfg)
+				if err != nil {
+					return fmt.Errorf("connecting to %s: %w", serverName, err)
+				}
+				defer client.Close()
 			}
-			defer client.Close()
 
 			result, err := client.CallTool(ctx, tool.Name, args)
 			if err != nil {
@@ -295,6 +306,12 @@ func parseToolArgs(args []string, schema mcpclient.ParsedSchema) (map[string]int
 
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
+
+		// "--" terminates flag parsing
+		if arg == "--" {
+			break
+		}
+
 		if !strings.HasPrefix(arg, "--") {
 			return nil, fmt.Errorf("unexpected argument: %s (expected --flag)", arg)
 		}

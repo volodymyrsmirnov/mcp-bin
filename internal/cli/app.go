@@ -18,6 +18,52 @@ import (
 	"github.com/volodymyrsmirnov/mcp-bin/internal/version"
 )
 
+// reservedCommands are names that cannot be used as server names because they
+// conflict with built-in CLI subcommands.
+var reservedCommands = map[string]bool{
+	"run": true, "compile": true, "validate": true,
+	"skill": true, "help": true, "version": true,
+}
+
+// skillFlags returns the shared flag definitions for the skill subcommand.
+func skillFlags(includeConfig bool) []ucli.Flag {
+	flags := []ucli.Flag{
+		&ucli.StringFlag{
+			Name:  "name",
+			Usage: "Skill name",
+			Value: "mcp-bin",
+		},
+		&ucli.StringFlag{
+			Name:  "description",
+			Usage: "Skill description (auto-generated if omitted)",
+		},
+		&ucli.StringFlag{
+			Name:  "version",
+			Usage: "Skill version (defaults to application version)",
+		},
+	}
+	if includeConfig {
+		flags = append([]ucli.Flag{
+			&ucli.StringFlag{
+				Name:     "config",
+				Aliases:  []string{"c"},
+				Usage:    "Path to config file (JSON or YAML)",
+				Required: true,
+			},
+		}, flags...)
+	}
+	return flags
+}
+
+// warnReservedNames logs a warning for server names that conflict with built-in commands.
+func warnReservedNames(servers map[string]config.ServerConfig) {
+	for name := range servers {
+		if reservedCommands[name] {
+			_, _ = fmt.Fprintf(os.Stderr, "Warning: server name %q conflicts with a built-in command and will be shadowed\n", name)
+		}
+	}
+}
+
 // BuildApp creates the CLI application.
 func BuildApp(cfg *config.Config, manifest *mcpclient.Manifest, compiledMode bool) *ucli.Command {
 	appName := "mcp-bin"
@@ -43,6 +89,8 @@ func BuildApp(cfg *config.Config, manifest *mcpclient.Manifest, compiledMode boo
 	}
 
 	if compiledMode {
+		warnReservedNames(cfg.Servers)
+
 		validateCmd := &ucli.Command{
 			Name:  "validate",
 			Usage: "Validate configuration and server connectivity",
@@ -57,21 +105,7 @@ func BuildApp(cfg *config.Config, manifest *mcpclient.Manifest, compiledMode boo
 		skillCmd := &ucli.Command{
 			Name:  "skill",
 			Usage: "Generate a markdown skill document",
-			Flags: []ucli.Flag{
-				&ucli.StringFlag{
-					Name:  "name",
-					Usage: "Skill name",
-					Value: "mcp-bin",
-				},
-				&ucli.StringFlag{
-					Name:  "description",
-					Usage: "Skill description (auto-generated if omitted)",
-				},
-				&ucli.StringFlag{
-					Name:  "version",
-					Usage: "Skill version (defaults to application version)",
-				},
-			},
+			Flags: skillFlags(false),
 			Action: func(ctx context.Context, cmd *ucli.Command) error {
 				binaryName := cmd.Root().Name
 				skill.Generate(os.Stdout, manifest, binaryName, cmd.String("name"), cmd.String("description"), cmd.String("version"))
@@ -94,10 +128,13 @@ func BuildApp(cfg *config.Config, manifest *mcpclient.Manifest, compiledMode boo
 			Flags: []ucli.Flag{configFlag},
 		}
 
-		// Pre-register server commands if we can parse config from args
-		if devCfg := loadConfigFromArgs(); devCfg != nil {
-			serverCmds := buildCommandsFromConfig(devCfg)
-			runCmd.Commands = append(runCmd.Commands, serverCmds...)
+		// Pre-register server commands only if the first subcommand is "run"
+		if isRunSubcommand() {
+			if devCfg := loadConfigFromArgs(); devCfg != nil {
+				warnReservedNames(devCfg.Servers)
+				serverCmds := buildCommandsFromConfig(devCfg)
+				runCmd.Commands = append(runCmd.Commands, serverCmds...)
+			}
 		}
 
 		compileCmd := &ucli.Command{
@@ -153,27 +190,7 @@ func BuildApp(cfg *config.Config, manifest *mcpclient.Manifest, compiledMode boo
 		skillCmd := &ucli.Command{
 			Name:  "skill",
 			Usage: "Generate a markdown skill document",
-			Flags: []ucli.Flag{
-				&ucli.StringFlag{
-					Name:     "config",
-					Aliases:  []string{"c"},
-					Usage:    "Path to config file (JSON or YAML)",
-					Required: true,
-				},
-				&ucli.StringFlag{
-					Name:  "name",
-					Usage: "Skill name",
-					Value: "mcp-bin",
-				},
-				&ucli.StringFlag{
-					Name:  "description",
-					Usage: "Skill description (auto-generated if omitted)",
-				},
-				&ucli.StringFlag{
-					Name:  "version",
-					Usage: "Skill version (defaults to application version)",
-				},
-			},
+			Flags: skillFlags(true),
 			Action: func(ctx context.Context, cmd *ucli.Command) error {
 				loadedCfg, err := config.LoadFromFile(cmd.String("config"))
 				if err != nil {
@@ -193,6 +210,17 @@ func BuildApp(cfg *config.Config, manifest *mcpclient.Manifest, compiledMode boo
 	}
 
 	return app
+}
+
+// isRunSubcommand checks if the first positional argument to the binary is "run".
+func isRunSubcommand() bool {
+	for _, arg := range os.Args[1:] {
+		if strings.HasPrefix(arg, "-") {
+			continue
+		}
+		return arg == "run"
+	}
+	return false
 }
 
 // loadConfigFromArgs does a best-effort parse of --config / -c from os.Args

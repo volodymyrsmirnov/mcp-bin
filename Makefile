@@ -6,16 +6,19 @@ LDFLAGS  = -s -w \
 	-X github.com/volodymyrsmirnov/mcp-bin/internal/version.Commit=$(COMMIT) \
 	-X github.com/volodymyrsmirnov/mcp-bin/internal/version.Date=$(DATE)
 
-.PHONY: build test fmt lint vet vulncheck clean
+.PHONY: build test fmt fmt-check lint vet vulncheck clean help
 
-build: clean
+build:
 	go build -ldflags="$(LDFLAGS)" -o mcp-bin ./cmd/mcp-bin/
 
 test:
-	go test ./...
+	go test -race -coverprofile=coverage.out -covermode=atomic ./...
 
 fmt:
 	gofmt -s -w .
+
+fmt-check:
+	@gofmt -s -l . | tee /dev/stderr | (! read)
 
 lint: vet
 	golangci-lint run ./...
@@ -27,4 +30,16 @@ vulncheck:
 	govulncheck ./...
 
 clean:
-	rm -f mcp-bin mcp-bin-compiled
+	rm -f mcp-bin mcp-bin-compiled coverage.out
+
+help:
+	@echo "Available targets:"
+	@echo "  build      - Build the mcp-bin binary"
+	@echo "  test       - Run tests with race detector and coverage"
+	@echo "  fmt        - Format Go source files"
+	@echo "  fmt-check  - Check formatting without modifying files"
+	@echo "  lint       - Run go vet and golangci-lint"
+	@echo "  vet        - Run go vet"
+	@echo "  vulncheck  - Run vulnerability scanner"
+	@echo "  clean      - Remove built binaries and coverage files"
+	@echo "  help       - Show this help message"

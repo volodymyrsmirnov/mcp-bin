@@ -30,12 +30,10 @@ func Connect(ctx context.Context, cfg config.ServerConfig) (*Client, error) {
 }
 
 func connectStdio(ctx context.Context, cfg config.ServerConfig) (*Client, error) {
-	// Apply a default connect timeout if the context has no deadline
-	if _, ok := ctx.Deadline(); !ok {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, 3*time.Minute)
-		defer cancel()
-	}
+	// Use a short-lived init context for Start + Initialize only.
+	// The transport outlives this context — we must not cancel the connection context.
+	initCtx, initCancel := withDefaultTimeout(ctx, 3*time.Minute)
+	defer initCancel()
 
 	var env []string
 	if cfg.Env != nil {
@@ -62,11 +60,11 @@ func connectStdio(ctx context.Context, cfg config.ServerConfig) (*Client, error)
 	t := transport.NewStdioWithOptions(cfg.Command, env, cfg.Args, opts...)
 
 	c := client.NewClient(t)
-	if err := c.Start(ctx); err != nil {
+	if err := c.Start(initCtx); err != nil {
 		return nil, stderrError(fmt.Errorf("starting stdio client: %w", err), t.Stderr())
 	}
 
-	if err := initialize(ctx, c); err != nil {
+	if err := initialize(initCtx, c); err != nil {
 		connErr := stderrError(err, t.Stderr())
 		_ = c.Close()
 		return nil, connErr
@@ -98,22 +96,19 @@ func stderrError(err error, stderr io.Reader) error {
 }
 
 func connectRemote(ctx context.Context, cfg config.ServerConfig) (*Client, error) {
-	// Apply a default connect timeout if the context has no deadline
-	if _, ok := ctx.Deadline(); !ok {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, 3*time.Minute)
-		defer cancel()
-	}
+	// Use a short-lived init context for Start + Initialize only.
+	initCtx, initCancel := withDefaultTimeout(ctx, 3*time.Minute)
+	defer initCancel()
 
 	// Try Streamable HTTP first
-	c, err := tryStreamableHTTP(ctx, cfg)
+	c, err := tryStreamableHTTP(initCtx, cfg)
 	if err == nil {
 		return c, nil
 	}
 
 	// If the server indicated it's a legacy SSE server, try SSE
 	if errors.Is(err, transport.ErrLegacySSEServer) {
-		return trySSE(ctx, cfg)
+		return trySSE(initCtx, cfg)
 	}
 
 	// For other errors, return directly — don't mask real connection problems
@@ -188,13 +183,10 @@ func initialize(ctx context.Context, c *client.Client) error {
 
 // ListTools returns the tools available on the connected server.
 func (c *Client) ListTools(ctx context.Context) ([]mcp.Tool, error) {
-	if _, ok := ctx.Deadline(); !ok {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, 3*time.Minute)
-		defer cancel()
-	}
+	listCtx, cancel := withDefaultTimeout(ctx, 3*time.Minute)
+	defer cancel()
 
-	result, err := c.mcpClient.ListTools(ctx, mcp.ListToolsRequest{})
+	result, err := c.mcpClient.ListTools(listCtx, mcp.ListToolsRequest{})
 	if err != nil {
 		return nil, err
 	}
@@ -214,6 +206,15 @@ func (c *Client) Close() {
 	if c.mcpClient != nil {
 		_ = c.mcpClient.Close()
 	}
+}
+
+// withDefaultTimeout returns a context with the given timeout if the parent
+// context has no deadline. If the parent already has a deadline, it is returned as-is.
+func withDefaultTimeout(ctx context.Context, d time.Duration) (context.Context, context.CancelFunc) {
+	if _, ok := ctx.Deadline(); ok {
+		return ctx, func() {}
+	}
+	return context.WithTimeout(ctx, d)
 }
 
 // nopLogger suppresses log output from the mcp-go stdio transport.

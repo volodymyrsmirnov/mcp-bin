@@ -174,3 +174,28 @@ func TestManifestSerialization(t *testing.T) {
 		t.Errorf("expected tool1, got %s", parsed.Servers["server1"][0].Name)
 	}
 }
+
+func TestManifestDescriptionsSerialization(t *testing.T) {
+	manifest := Manifest{
+		Servers: map[string][]ToolSchema{
+			"server1": {{Name: "tool1", Description: "desc1", InputSchema: json.RawMessage(`{}`)}},
+		},
+		Descriptions: map[string]string{
+			"server1": "A test server",
+		},
+	}
+
+	data, err := json.Marshal(manifest)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var parsed Manifest
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if parsed.Descriptions["server1"] != "A test server" {
+		t.Errorf("expected 'A test server', got %q", parsed.Descriptions["server1"])
+	}
+}

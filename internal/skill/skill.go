@@ -12,12 +12,22 @@ import (
 	"github.com/volodymyrsmirnov/mcp-bin/internal/version"
 )
 
+// sortedManifestServerNames returns the server names from a manifest in sorted order.
+func sortedManifestServerNames(manifest *mcpclient.Manifest) []string {
+	names := make([]string, 0, len(manifest.Servers))
+	for name := range manifest.Servers {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
 var nonAlphanumRe = regexp.MustCompile(`[^a-z0-9]+`)
 
 // Generate writes a markdown skill document to w.
 // If skillVersion is empty, the application version is used.
 func Generate(w io.Writer, manifest *mcpclient.Manifest, binaryName, skillName, description, skillVersion string) {
-	serverNames := sortedServerNames(manifest)
+	serverNames := sortedManifestServerNames(manifest)
 
 	if description == "" {
 		description = autoDescription(serverNames)
@@ -103,15 +113,6 @@ func sortTools(tools []mcpclient.ToolSchema) []mcpclient.ToolSchema {
 	copy(sorted, tools)
 	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Name < sorted[j].Name })
 	return sorted
-}
-
-func sortedServerNames(manifest *mcpclient.Manifest) []string {
-	names := make([]string, 0, len(manifest.Servers))
-	for name := range manifest.Servers {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	return names
 }
 
 func autoDescription(serverNames []string) string {

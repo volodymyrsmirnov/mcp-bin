@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -286,4 +287,14 @@ func (c *Config) PatchFiles(dirsRoot string, baseDir string) {
 		}
 		c.Servers[name] = srv
 	}
+}
+
+// SortedServerNames returns the server names from the config in sorted order.
+func SortedServerNames(cfg *Config) []string {
+	names := make([]string, 0, len(cfg.Servers))
+	for name := range cfg.Servers {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }

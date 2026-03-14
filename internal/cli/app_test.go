@@ -176,7 +176,7 @@ func TestLoadConfigFromArgsEqualsInvalid(t *testing.T) {
 func TestLoadConfigFromArgsFlagVariants(t *testing.T) {
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "config.json")
-	if err := os.WriteFile(configPath, []byte(`{"servers":{}}`), 0644); err != nil {
+	if err := os.WriteFile(configPath, []byte(`{"servers":{"s":{"command":"echo"}}}`), 0644); err != nil {
 		t.Fatal(err)
 	}
 
