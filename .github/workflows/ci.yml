@@ -39,7 +39,7 @@ jobs:
         run: go vet ./...
 
       - name: Lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v7
         with:
           version: v2.1
 
@@ -51,7 +51,7 @@ jobs:
 
       - name: Test report
         uses: dorny/test-reporter@v1
-        if: always()
+        if: always() && hashFiles('test-results.xml') != ''
         with:
           name: Test Results
           path: test-results.xml
