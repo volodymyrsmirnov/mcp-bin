@@ -2,7 +2,6 @@ package mcp
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -13,7 +12,9 @@ import (
 	"github.com/mark3labs/mcp-go/client"
 	"github.com/mark3labs/mcp-go/client/transport"
 	"github.com/mark3labs/mcp-go/mcp"
+
 	"github.com/volodymyrsmirnov/mcp-bin/internal/config"
+	"github.com/volodymyrsmirnov/mcp-bin/internal/oauth"
 )
 
 // Client wraps an MCP client connection.
@@ -103,36 +104,34 @@ func connectRemote(ctx context.Context, cfg config.ServerConfig) (*Client, error
 	initCtx, initCancel := withDefaultTimeout(ctx, 3*time.Minute)
 	defer initCancel()
 
-	// Try Streamable HTTP first
-	c, err := tryStreamableHTTP(initCtx, cfg)
-	if err == nil {
-		return c, nil
-	}
-
-	// If the server indicated it's a legacy SSE server, try SSE
-	if errors.Is(err, transport.ErrLegacySSEServer) {
-		return trySSE(initCtx, cfg)
-	}
-
-	// For other errors, return directly — don't mask real connection problems
-	return nil, err
+	// Always use OAuth-aware transport for remote servers.
+	// If the keychain has a stored token, it gets used automatically.
+	// If the server doesn't require auth, the transport works fine without a token.
+	// If auth is required but no token exists, we return a helpful error.
+	return connectWithOAuth(initCtx, cfg)
 }
 
-func tryStreamableHTTP(ctx context.Context, cfg config.ServerConfig) (*Client, error) {
+func connectWithOAuth(ctx context.Context, cfg config.ServerConfig) (*Client, error) {
+	oauthCfg := buildOAuthTransportConfig(cfg)
+
 	var opts []transport.StreamableHTTPCOption
 	if cfg.Headers != nil {
 		opts = append(opts, transport.WithHTTPHeaders(cfg.Headers))
 	}
 
-	t, err := transport.NewStreamableHTTP(cfg.URL, opts...)
+	c, err := client.NewOAuthStreamableHttpClient(cfg.URL, oauthCfg, opts...)
 	if err != nil {
-		return nil, fmt.Errorf("creating streamable HTTP transport: %w", err)
+		return nil, fmt.Errorf("creating OAuth client: %w", err)
 	}
 
-	c := client.NewClient(t)
 	if err := c.Start(ctx); err != nil {
+		// If authorization is required, provide a helpful error
+		if client.IsOAuthAuthorizationRequiredError(err) {
+			_ = c.Close()
+			return nil, fmt.Errorf("OAuth authorization required, run: mcp-bin oauth <server> login")
+		}
 		_ = c.Close()
-		return nil, fmt.Errorf("starting streamable HTTP client: %w", err)
+		return nil, fmt.Errorf("starting OAuth client: %w", err)
 	}
 
 	if err := initialize(ctx, c); err != nil {
@@ -143,29 +142,18 @@ func tryStreamableHTTP(ctx context.Context, cfg config.ServerConfig) (*Client, e
 	return &Client{mcpClient: c}, nil
 }
 
-func trySSE(ctx context.Context, cfg config.ServerConfig) (*Client, error) {
-	var opts []transport.ClientOption
-	if cfg.Headers != nil {
-		opts = append(opts, transport.WithHeaders(cfg.Headers))
+func buildOAuthTransportConfig(cfg config.ServerConfig) transport.OAuthConfig {
+	store := oauth.NewKeychainStore(oauth.SystemKeyring(), cfg.URL)
+	oauthCfg := transport.OAuthConfig{
+		TokenStore:  store,
+		PKCEEnabled: true,
 	}
-
-	t, err := transport.NewSSE(cfg.URL, opts...)
-	if err != nil {
-		return nil, fmt.Errorf("creating SSE transport: %w", err)
+	if cfg.OAuth != nil {
+		oauthCfg.ClientID = cfg.OAuth.ClientID
+		oauthCfg.ClientSecret = cfg.OAuth.ClientSecret
+		oauthCfg.Scopes = cfg.OAuth.Scopes
 	}
-
-	c := client.NewClient(t)
-	if err := c.Start(ctx); err != nil {
-		_ = c.Close()
-		return nil, fmt.Errorf("starting SSE client: %w", err)
-	}
-
-	if err := initialize(ctx, c); err != nil {
-		_ = c.Close()
-		return nil, err
-	}
-
-	return &Client{mcpClient: c}, nil
+	return oauthCfg
 }
 
 func initialize(ctx context.Context, c *client.Client) error {

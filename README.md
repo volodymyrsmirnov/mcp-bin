@@ -93,6 +93,13 @@ EOF
       "headers": {
         "Authorization": "Bearer ${TOKEN}"
       }
+    },
+    "oauth-server": {
+      "url": "https://mcp.notion.com/mcp",
+      "oauth": {
+        "client_id": "${NOTION_CLIENT_ID}",
+        "client_secret": "${NOTION_CLIENT_SECRET}"
+      }
     }
   }
 }
@@ -104,6 +111,7 @@ EOF
 - **`servers`** — Named MCP server definitions
   - **Local servers**: `command` + `args` + optional `env` and `cwd`
   - **Remote servers**: `url` + optional `headers`
+  - **OAuth**: `oauth` block with optional `client_id`, `client_secret`, `scopes` (endpoints are auto-discovered)
 - **`${VAR}`** — Environment variable substitution. Resolved at compile time, overridable at runtime.
 
 ## CLI Usage
@@ -117,6 +125,9 @@ EOF
 ./mcp-bin compile --config config.json [--output FILE]     # compile binary
 ./mcp-bin validate --config config.json [--connect]        # validate config
 ./mcp-bin skill --config config.json [--name NAME] [--description DESC]  # generate skill doc
+./mcp-bin oauth --config config.json login <server>        # OAuth login
+./mcp-bin oauth --config config.json logout <server>       # remove stored tokens
+./mcp-bin oauth --config config.json check <server>        # check token status
 ```
 
 ### Compiled Mode (self-contained)
@@ -127,6 +138,9 @@ EOF
 ./my-tools <server> <tool> [args]
 ./my-tools validate [--connect]                            # validate config
 ./my-tools skill [--name NAME] [--description DESC]       # generate skill doc
+./my-tools oauth login <server>                            # OAuth login
+./my-tools oauth logout <server>                           # remove stored tokens
+./my-tools oauth check <server>                            # check token status
 ```
 
 ### Global Flags
@@ -177,6 +191,38 @@ Checks configuration health: config syntax, environment variable resolution, com
 ```
 
 Generates a markdown skill document to stdout — designed for LLM consumption. Includes YAML front matter, server/tool listing with flags, and usage examples. Available in both dev and compiled modes.
+
+## OAuth Command
+
+```bash
+./mcp-bin oauth --config config.json login <server>              # authenticate via browser
+./mcp-bin oauth --config config.json login <server> --no-browser  # paste redirect URL manually
+./mcp-bin oauth --config config.json login <server> --port 8085   # use fixed callback port
+./mcp-bin oauth --config config.json check <server>               # show token status
+./mcp-bin oauth --config config.json logout <server>              # remove stored tokens
+```
+
+Manages OAuth2 authentication for remote MCP servers. OAuth endpoints (authorization URL, token URL) are auto-discovered from the server via RFC 9728/8414 — no manual endpoint configuration needed.
+
+**Login flow:**
+1. Discovers OAuth endpoints from the MCP server URL
+2. Starts a local callback server for the redirect
+3. Opens your browser to the authorization page (or prints the URL for `--no-browser`)
+4. Exchanges the authorization code for tokens using PKCE
+5. Stores tokens securely in the system keychain (macOS Keychain / Linux Secret Service)
+
+**Token usage:** When connecting to a server with stored OAuth tokens, they are automatically injected. Expired tokens are refreshed transparently.
+
+**Config:** The `oauth` block is optional. If the server supports dynamic client registration, no config is needed at all — just the `url`. For servers that require pre-registered credentials (e.g., Notion), add `client_id` and `client_secret`:
+
+```yaml
+servers:
+  notion:
+    url: https://mcp.notion.com/mcp
+    oauth:
+      client_id: "${NOTION_CLIENT_ID}"
+      client_secret: "${NOTION_CLIENT_SECRET}"
+```
 
 ## Transport Support
 

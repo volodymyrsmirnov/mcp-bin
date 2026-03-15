@@ -10,9 +10,11 @@ import (
 	"syscall"
 
 	ucli "github.com/urfave/cli/v3"
+
 	"github.com/volodymyrsmirnov/mcp-bin/internal/compile"
 	"github.com/volodymyrsmirnov/mcp-bin/internal/config"
 	mcpclient "github.com/volodymyrsmirnov/mcp-bin/internal/mcp"
+	"github.com/volodymyrsmirnov/mcp-bin/internal/oauth"
 	"github.com/volodymyrsmirnov/mcp-bin/internal/skill"
 	"github.com/volodymyrsmirnov/mcp-bin/internal/validate"
 	"github.com/volodymyrsmirnov/mcp-bin/internal/version"
@@ -22,7 +24,7 @@ import (
 // conflict with built-in CLI subcommands.
 var reservedCommands = map[string]bool{
 	"run": true, "compile": true, "validate": true,
-	"skill": true, "help": true, "version": true,
+	"skill": true, "oauth": true, "help": true, "version": true,
 }
 
 // skillFlags returns the shared flag definitions for the skill subcommand.
@@ -53,6 +55,100 @@ func skillFlags(includeConfig bool) []ucli.Flag {
 		}, flags...)
 	}
 	return flags
+}
+
+// oauthCmd builds the oauth command tree for managing OAuth2 authentication.
+func oauthCmd(loadConfig func(cmd *ucli.Command) (*config.Config, error)) *ucli.Command {
+	return &ucli.Command{
+		Name:  "oauth",
+		Usage: "Manage OAuth2 authentication for remote servers",
+		Commands: []*ucli.Command{
+			{
+				Name:  "login",
+				Usage: "Authenticate with a remote server via OAuth2",
+				Flags: []ucli.Flag{
+					&ucli.IntFlag{
+						Name:  "port",
+						Usage: "Local callback server port (0 = auto)",
+						Value: 0,
+					},
+					&ucli.BoolFlag{
+						Name:  "no-browser",
+						Usage: "Don't open browser; paste redirect URL manually",
+					},
+				},
+				Action: func(ctx context.Context, cmd *ucli.Command) error {
+					cfg, err := loadConfig(cmd)
+					if err != nil {
+						return err
+					}
+					serverName := cmd.Args().First()
+					if serverName == "" {
+						return fmt.Errorf("server name required: mcp-bin oauth login <server>")
+					}
+					srv, ok := cfg.Servers[serverName]
+					if !ok {
+						return fmt.Errorf("server %q not found in config", serverName)
+					}
+					if !srv.IsRemote() {
+						return fmt.Errorf("server %q is not a remote server (no url configured)", serverName)
+					}
+					store := oauth.NewKeychainStore(oauth.SystemKeyring(), srv.URL)
+					opts := oauth.FlowOptions{
+						Port:      int(cmd.Int("port")),
+						NoBrowser: cmd.Bool("no-browser"),
+					}
+					return oauth.Login(ctx, os.Stderr, srv.URL, srv.OAuth, store, opts)
+				},
+			},
+			{
+				Name:  "logout",
+				Usage: "Remove stored OAuth2 tokens for a server",
+				Action: func(ctx context.Context, cmd *ucli.Command) error {
+					cfg, err := loadConfig(cmd)
+					if err != nil {
+						return err
+					}
+					serverName := cmd.Args().First()
+					if serverName == "" {
+						return fmt.Errorf("server name required: mcp-bin oauth logout <server>")
+					}
+					srv, ok := cfg.Servers[serverName]
+					if !ok {
+						return fmt.Errorf("server %q not found in config", serverName)
+					}
+					if !srv.IsRemote() {
+						return fmt.Errorf("server %q is not a remote server (no url configured)", serverName)
+					}
+					store := oauth.NewKeychainStore(oauth.SystemKeyring(), srv.URL)
+					return oauth.Logout(os.Stdout, store)
+				},
+			},
+			{
+				Name:  "check",
+				Usage: "Check OAuth2 token status for a server",
+				Action: func(ctx context.Context, cmd *ucli.Command) error {
+					cfg, err := loadConfig(cmd)
+					if err != nil {
+						return err
+					}
+					serverName := cmd.Args().First()
+					if serverName == "" {
+						return fmt.Errorf("server name required: mcp-bin oauth check <server>")
+					}
+					srv, ok := cfg.Servers[serverName]
+					if !ok {
+						return fmt.Errorf("server %q not found in config", serverName)
+					}
+					if !srv.IsRemote() {
+						return fmt.Errorf("server %q is not a remote server (no url configured)", serverName)
+					}
+					store := oauth.NewKeychainStore(oauth.SystemKeyring(), srv.URL)
+					return oauth.Check(ctx, os.Stdout, srv.URL, store)
+				},
+			},
+		},
+	}
 }
 
 // warnReservedNames logs a warning for server names that conflict with built-in commands.
@@ -112,8 +208,12 @@ func BuildApp(cfg *config.Config, manifest *mcpclient.Manifest, compiledMode boo
 				return nil
 			},
 		}
+		oauthCommand := oauthCmd(func(_ *ucli.Command) (*config.Config, error) {
+			return cfg, nil
+		})
+
 		app.Commands = buildCommandsFromManifest(cfg, manifest)
-		app.Commands = append(app.Commands, validateCmd, skillCmd)
+		app.Commands = append(app.Commands, validateCmd, skillCmd, oauthCommand)
 	} else {
 		configFlag := &ucli.StringFlag{
 			Name:     "config",
@@ -206,7 +306,24 @@ func BuildApp(cfg *config.Config, manifest *mcpclient.Manifest, compiledMode boo
 			},
 		}
 
-		app.Commands = append(app.Commands, runCmd, compileCmd, validateCmd, skillCmd)
+		oauthCommand := oauthCmd(func(cmd *ucli.Command) (*config.Config, error) {
+			// In dev mode, --config is on the parent oauth command
+			configPath := cmd.Root().Command("oauth").String("config")
+			if configPath == "" {
+				return nil, fmt.Errorf("--config flag is required")
+			}
+			return config.LoadFromFile(configPath)
+		})
+		oauthCommand.Flags = []ucli.Flag{
+			&ucli.StringFlag{
+				Name:     "config",
+				Aliases:  []string{"c"},
+				Usage:    "Path to config file (JSON or YAML)",
+				Required: true,
+			},
+		}
+
+		app.Commands = append(app.Commands, runCmd, compileCmd, validateCmd, skillCmd, oauthCommand)
 	}
 
 	return app

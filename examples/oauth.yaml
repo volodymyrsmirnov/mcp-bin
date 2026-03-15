@@ -1,0 +1,18 @@
+# Notion MCP server with OAuth2 authentication.
+# OAuth endpoints are auto-discovered from the server URL.
+#
+# Login:
+#   mcp-bin oauth --config examples/oauth.yaml login notion
+#
+# Check token status:
+#   mcp-bin oauth --config examples/oauth.yaml check notion
+#
+# Use tools:
+#   mcp-bin run --config examples/oauth.yaml notion <tool> [flags]
+#
+# Logout:
+#   mcp-bin oauth --config examples/oauth.yaml logout notion
+servers:
+  notion:
+    description: "Notion workspace via OAuth2"
+    url: https://mcp.notion.com/mcp

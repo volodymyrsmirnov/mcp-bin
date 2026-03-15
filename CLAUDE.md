@@ -10,7 +10,7 @@ Two-mode binary:
 - **Dev mode**: `./mcp-bin run --config config.json <server> <tool> [--flags]` — live introspection
 - **Compiled mode**: `./compiled-binary <server> <tool> [--flags]` — pre-introspected, self-contained
 
-Both modes support `validate` for config/environment diagnostics and `skill` for generating markdown skill documents.
+Both modes support `validate` for config/environment diagnostics, `skill` for generating markdown skill documents, and `oauth` for managing OAuth2 authentication.
 
 ### Package Structure
 
@@ -18,12 +18,13 @@ Both modes support `validate` for config/environment diagnostics and `skill` for
 cmd/mcp-bin/          — entrypoint, mode detection (compiled vs dev)
 internal/
   config/             — JSON/YAML config parsing, ${VAR} env var resolution, tool filtering
-  mcp/                — MCP client wrapper (stdio, SSE, Streamable HTTP), introspection, schema types
+  mcp/                — MCP client wrapper (stdio, SSE, Streamable HTTP, OAuth), introspection, schema types
   cli/                — urfave/cli v3 app, dynamic tool-to-command conversion, arg parsing
   compile/            — zip-append compilation (no Go toolchain needed)
   embed/              — embedded zip detection (EOCD signature) + extraction to cache
-  validate/           — config validation, env/command/URL diagnostics
+  validate/           — config validation, env/command/URL/OAuth diagnostics
   skill/              — markdown skill document generation for LLM consumption
+  oauth/              — OAuth2 flow (PKCE, auto-discovery), keychain token storage
   output/             — text vs --json output formatting
 examples/             — example configs and MCP servers
 schema/               — JSON schema for config file validation
@@ -32,11 +33,14 @@ schema/               — JSON schema for config file validation
 ### Key Types
 
 - `config.Config` / `config.ServerConfig` — configuration (local command or remote URL)
+- `config.OAuthConfig` — optional OAuth2 settings (client_id, client_secret, scopes)
 - `config.CompiledConfig` — config format for embedded binaries with env var metadata
-- `mcp.Client` — wraps MCP client connection (stdio/HTTP/SSE)
+- `mcp.Client` — wraps MCP client connection (stdio/HTTP/SSE/OAuth)
 - `mcp.ToolSchema` / `mcp.Manifest` — serializable tool schemas for compiled mode
 - `mcp.ParsedSchema` / `mcp.PropertyInfo` — parsed JSON schema for flag generation
 - `embed.ZipInfo` / `embed.CachePaths` — embedded zip location and extracted paths
+- `oauth.KeychainStore` — implements mcp-go's `transport.TokenStore` via system keychain
+- `oauth.Keyring` — interface abstracting keychain operations (testable via in-memory mock)
 
 ### Data Flow
 
@@ -48,18 +52,24 @@ schema/               — JSON schema for config file validation
 
 **Skill**: config → `mcp.IntrospectAll` → `skill.Generate` → markdown to stdout
 
+**OAuth login**: config → `oauth.Login` → `transport.NewOAuthHandler` → discover endpoints (RFC 9728/8414) → PKCE + browser auth → `handler.ProcessAuthorizationResponse` → `KeychainStore.SaveToken`
+
+**OAuth connect**: config → `mcp.connectWithOAuth` → `client.NewOAuthStreamableHttpClient` with `KeychainStore` → auto-injects Bearer token from keychain, auto-refreshes if expired
+
 **Compiled mode**: `embed.DetectEmbeddedZip` → `embed.ExtractToCache` → `config.LoadCompiledConfig` → `cli.BuildApp` with manifest → urfave/cli flag parsing → `mcp.Connect` → `mcp.CallTool`
 
 ## Build & Test
 
 ```bash
 make build          # build binary
-make test           # run all tests
+make test           # run all tests (with race detector + coverage)
 make fmt            # gofmt -s -w .
+make fmt-check      # check formatting without modifying
 make lint           # go vet + golangci-lint
 make vet            # go vet only
 make vulncheck      # govulncheck ./...
-make clean          # remove built binaries
+make clean          # remove built binaries and coverage
+make help           # show available targets
 ```
 
 Or directly:
@@ -74,9 +84,10 @@ govulncheck ./...
 
 ## Dependencies
 
-- `github.com/mark3labs/mcp-go` v0.45.0 — MCP client (stdio, SSE, Streamable HTTP transports)
+- `github.com/mark3labs/mcp-go` v0.45.0 — MCP client (stdio, SSE, Streamable HTTP transports, OAuth)
 - `github.com/urfave/cli/v3` v3.7.0 — CLI framework
 - `gopkg.in/yaml.v3` v3.0.1 — YAML config parsing
+- `github.com/zalando/go-keyring` v0.2.6 — cross-platform keychain (macOS Keychain, Linux Secret Service)
 - `golangci-lint` v2 — linter (install via `brew install golangci-lint` or [official docs](https://golangci-lint.run/docs/welcome/install/))
 - `govulncheck` — vulnerability scanner (install via `go install golang.org/x/vuln/cmd/govulncheck@latest`)
 
@@ -142,4 +153,7 @@ Package aliases used: `ucli` for urfave/cli, `mcpclient` for internal/mcp, `mcpl
 - Dev mode uses `SkipFlagParsing` + manual `parseToolArgs` for dynamic tools
 - Compiled mode uses urfave/cli's built-in flag parsing with pre-registered commands
 - Tool filtering uses `filepath.Match` glob patterns via `allow_tools` / `deny_tools`
-- Remote transport: tries Streamable HTTP first, falls back to SSE only on `ErrLegacySSEServer`
+- Remote transport: all remote connections use OAuth-aware transport; tokens injected from keychain automatically
+- OAuth tokens stored in system keychain via `go-keyring` (service: `"mcp-bin"`, key: `"oauth:<normalized-url>"`)
+- OAuth endpoints auto-discovered via RFC 9728 (Protected Resource Metadata) and RFC 8414 (Authorization Server Metadata)
+- PKCE (S256) is mandatory for all OAuth flows

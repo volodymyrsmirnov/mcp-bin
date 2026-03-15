@@ -93,6 +93,11 @@ func checkServer(ctx context.Context, name string, srv config.ServerConfig, conn
 	if !checkEnvVars(srv, w) {
 		ok = false
 	}
+	if srv.OAuth != nil {
+		if !checkOAuth(srv, w) {
+			ok = false
+		}
+	}
 
 	if connect {
 		if !checkConnectivity(ctx, name, srv, w) {
@@ -154,6 +159,32 @@ func checkRemoteURL(srv config.ServerConfig, w io.Writer) bool {
 		return false
 	}
 	pass(w, "URL format valid")
+	return true
+}
+
+func checkOAuth(srv config.ServerConfig, w io.Writer) bool {
+	if srv.IsLocal() {
+		fail(w, "OAuth is only supported for remote servers (url)")
+		return false
+	}
+	o := srv.OAuth
+	if o.ClientID != "" {
+		if matches := config.EnvVarPattern.FindAllStringSubmatch(o.ClientID, -1); len(matches) > 0 {
+			for _, m := range matches {
+				fail(w, fmt.Sprintf("env var %s not set (in oauth.client_id)", m[1]))
+			}
+			return false
+		}
+	}
+	if o.ClientSecret != "" {
+		if matches := config.EnvVarPattern.FindAllStringSubmatch(o.ClientSecret, -1); len(matches) > 0 {
+			for _, m := range matches {
+				fail(w, fmt.Sprintf("env var %s not set (in oauth.client_secret)", m[1]))
+			}
+			return false
+		}
+	}
+	pass(w, "OAuth configured")
 	return true
 }
 

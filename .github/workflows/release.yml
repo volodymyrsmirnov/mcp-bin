@@ -29,7 +29,7 @@ jobs:
         run: |
           latest=$(git tag --list 'v*' --sort=-v:refname | head -n1)
           if [ -z "$latest" ]; then
-            echo "tag=v0.1.0" >> "$GITHUB_OUTPUT"
+            echo "tag=v0.2.0" >> "$GITHUB_OUTPUT"
           else
             patch=$(echo "$latest" | cut -d. -f3)
             prefix=$(echo "$latest" | cut -d. -f1-2)
@@ -54,9 +54,6 @@ jobs:
           - goos: darwin
             goarch: arm64
             suffix: darwin-arm64
-          - goos: windows
-            goarch: amd64
-            suffix: windows-amd64.exe
     steps:
       - uses: actions/checkout@v4
 

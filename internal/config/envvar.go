@@ -26,6 +26,15 @@ func (c *Config) ResolveEnvVars() {
 				srv.Headers[k] = resolveEnvString(v)
 			}
 		}
+		if srv.OAuth != nil {
+			srv.rawOAuth = &OAuthConfig{
+				ClientID:     srv.OAuth.ClientID,
+				ClientSecret: srv.OAuth.ClientSecret,
+				Scopes:       srv.OAuth.Scopes,
+			}
+			srv.OAuth.ClientID = resolveEnvString(srv.OAuth.ClientID)
+			srv.OAuth.ClientSecret = resolveEnvString(srv.OAuth.ClientSecret)
+		}
 		c.Servers[name] = srv
 	}
 }
@@ -79,6 +88,17 @@ func BuildCompiledConfig(c *Config) *CompiledConfig {
 			}
 			for k, raw := range rawHeaders {
 				cs.Headers[k] = buildEnvValue(raw)
+			}
+		}
+		if srv.OAuth != nil {
+			rawOAuth := srv.rawOAuth
+			if rawOAuth == nil {
+				rawOAuth = srv.OAuth
+			}
+			cs.OAuth = &CompiledOAuthConfig{
+				ClientID:     buildEnvValue(rawOAuth.ClientID),
+				ClientSecret: buildEnvValue(rawOAuth.ClientSecret),
+				Scopes:       rawOAuth.Scopes,
 			}
 		}
 		cc.Servers[name] = cs

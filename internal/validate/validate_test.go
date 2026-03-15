@@ -235,3 +235,71 @@ func TestOutputHelpers(t *testing.T) {
 		})
 	}
 }
+
+func TestCheckOAuth(t *testing.T) {
+	tests := []struct {
+		name   string
+		srv    config.ServerConfig
+		pass   bool
+		substr string
+	}{
+		{
+			name: "valid oauth on remote server",
+			srv: config.ServerConfig{
+				URL:   "https://example.com/mcp",
+				OAuth: &config.OAuthConfig{ClientID: "my-id"},
+			},
+			pass:   true,
+			substr: "OAuth configured",
+		},
+		{
+			name: "oauth on local server",
+			srv: config.ServerConfig{
+				Command: "node",
+				OAuth:   &config.OAuthConfig{ClientID: "my-id"},
+			},
+			pass:   false,
+			substr: "only supported for remote",
+		},
+		{
+			name: "unresolved client_id env var",
+			srv: config.ServerConfig{
+				URL:   "https://example.com/mcp",
+				OAuth: &config.OAuthConfig{ClientID: "${MISSING_CLIENT_ID}"},
+			},
+			pass:   false,
+			substr: "MISSING_CLIENT_ID",
+		},
+		{
+			name: "unresolved client_secret env var",
+			srv: config.ServerConfig{
+				URL:   "https://example.com/mcp",
+				OAuth: &config.OAuthConfig{ClientID: "id", ClientSecret: "${MISSING_SECRET}"},
+			},
+			pass:   false,
+			substr: "MISSING_SECRET",
+		},
+		{
+			name: "empty oauth (dynamic registration)",
+			srv: config.ServerConfig{
+				URL:   "https://example.com/mcp",
+				OAuth: &config.OAuthConfig{},
+			},
+			pass:   true,
+			substr: "OAuth configured",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			got := checkOAuth(tt.srv, &buf)
+			if got != tt.pass {
+				t.Errorf("checkOAuth() = %v, want %v\noutput: %s", got, tt.pass, buf.String())
+			}
+			if !strings.Contains(buf.String(), tt.substr) {
+				t.Errorf("output missing %q:\n%s", tt.substr, buf.String())
+			}
+		})
+	}
+}

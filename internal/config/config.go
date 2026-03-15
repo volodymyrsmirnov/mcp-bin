@@ -45,6 +45,9 @@ type ServerConfig struct {
 	AllowTools []string `json:"allow_tools,omitempty" yaml:"allow_tools,omitempty"`
 	DenyTools  []string `json:"deny_tools,omitempty" yaml:"deny_tools,omitempty"`
 
+	// OAuth2 authentication
+	OAuth *OAuthConfig `json:"oauth,omitempty" yaml:"oauth,omitempty"`
+
 	// cwdAutoSet is true when Cwd was defaulted to the config file directory,
 	// not explicitly set by the user. Not serialized.
 	cwdAutoSet bool
@@ -53,6 +56,15 @@ type ServerConfig struct {
 	// Used by BuildCompiledConfig to preserve ${VAR} patterns.
 	rawEnv     map[string]string
 	rawHeaders map[string]string
+	rawOAuth   *OAuthConfig
+}
+
+// OAuthConfig holds optional OAuth2 settings for remote servers.
+// All endpoints are auto-discovered from the server URL via RFC 9728/8414.
+type OAuthConfig struct {
+	ClientID     string   `json:"client_id,omitempty" yaml:"client_id,omitempty"`
+	ClientSecret string   `json:"client_secret,omitempty" yaml:"client_secret,omitempty"`
+	Scopes       []string `json:"scopes,omitempty" yaml:"scopes,omitempty"`
 }
 
 // ExplicitCwd returns the cwd only if it was explicitly set in the config file.
@@ -88,15 +100,23 @@ type CompiledConfig struct {
 }
 
 type CompiledServerConfig struct {
-	Description string              `json:"description,omitempty" yaml:"description,omitempty"`
-	Command     string              `json:"command,omitempty" yaml:"command,omitempty"`
-	Args        []string            `json:"args,omitempty" yaml:"args,omitempty"`
-	Env         map[string]EnvValue `json:"env,omitempty" yaml:"env,omitempty"`
-	Cwd         string              `json:"cwd,omitempty" yaml:"cwd,omitempty"`
-	URL         string              `json:"url,omitempty" yaml:"url,omitempty"`
-	Headers     map[string]EnvValue `json:"headers,omitempty" yaml:"headers,omitempty"`
-	AllowTools  []string            `json:"allow_tools,omitempty" yaml:"allow_tools,omitempty"`
-	DenyTools   []string            `json:"deny_tools,omitempty" yaml:"deny_tools,omitempty"`
+	Description string               `json:"description,omitempty" yaml:"description,omitempty"`
+	Command     string               `json:"command,omitempty" yaml:"command,omitempty"`
+	Args        []string             `json:"args,omitempty" yaml:"args,omitempty"`
+	Env         map[string]EnvValue  `json:"env,omitempty" yaml:"env,omitempty"`
+	Cwd         string               `json:"cwd,omitempty" yaml:"cwd,omitempty"`
+	URL         string               `json:"url,omitempty" yaml:"url,omitempty"`
+	Headers     map[string]EnvValue  `json:"headers,omitempty" yaml:"headers,omitempty"`
+	AllowTools  []string             `json:"allow_tools,omitempty" yaml:"allow_tools,omitempty"`
+	DenyTools   []string             `json:"deny_tools,omitempty" yaml:"deny_tools,omitempty"`
+	OAuth       *CompiledOAuthConfig `json:"oauth,omitempty" yaml:"oauth,omitempty"`
+}
+
+// CompiledOAuthConfig preserves env var metadata for OAuth fields.
+type CompiledOAuthConfig struct {
+	ClientID     EnvValue `json:"client_id,omitempty" yaml:"client_id,omitempty"`
+	ClientSecret EnvValue `json:"client_secret,omitempty" yaml:"client_secret,omitempty"`
+	Scopes       []string `json:"scopes,omitempty" yaml:"scopes,omitempty"`
 }
 
 // LoadFromFile reads and parses a config file (JSON or YAML, detected by extension).
@@ -179,6 +199,13 @@ func LoadCompiledConfig(data []byte) (*Config, error) {
 			sc.Headers = make(map[string]string)
 			for k, ev := range srv.Headers {
 				sc.Headers[k] = resolveEnvValue(ev)
+			}
+		}
+		if srv.OAuth != nil {
+			sc.OAuth = &OAuthConfig{
+				ClientID:     resolveEnvValue(srv.OAuth.ClientID),
+				ClientSecret: resolveEnvValue(srv.OAuth.ClientSecret),
+				Scopes:       srv.OAuth.Scopes,
 			}
 		}
 		cfg.Servers[name] = sc

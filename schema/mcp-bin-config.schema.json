@@ -84,6 +84,26 @@
             "type": "string",
             "description": "Tool name or glob pattern (e.g., 'dangerous_tool', 'admin_*')."
           }
+        },
+        "oauth": {
+          "type": "object",
+          "description": "OAuth2 configuration. Endpoints are auto-discovered from the server URL via RFC 9728/8414. Only client credentials and scopes need to be specified when required by the provider.",
+          "properties": {
+            "client_id": {
+              "type": "string",
+              "description": "OAuth2 client ID. Supports ${VAR} env var substitution. Optional if the server supports dynamic client registration."
+            },
+            "client_secret": {
+              "type": "string",
+              "description": "OAuth2 client secret. Supports ${VAR} env var substitution. Optional for public clients."
+            },
+            "scopes": {
+              "type": "array",
+              "description": "OAuth2 scopes to request. If omitted, uses server-advertised defaults.",
+              "items": { "type": "string" }
+            }
+          },
+          "additionalProperties": false
         }
       },
       "oneOf": [
