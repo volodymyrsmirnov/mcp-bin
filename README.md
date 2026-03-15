@@ -13,6 +13,20 @@ brew install mcp-bin@0.1.5    # specific version
 brew search mcp-bin           # list available versions
 ```
 
+### Shell Script (macOS / Linux)
+
+```bash
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/volodymyrsmirnov/mcp-bin/main/install.sh)"
+```
+
+Detects your OS and architecture, downloads the appropriate binary to `/usr/local/bin`, and removes the macOS quarantine attribute automatically.
+
+To install a specific version:
+
+```bash
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/volodymyrsmirnov/mcp-bin/main/install.sh)" -- v0.1.22
+```
+
 ### GitHub Releases
 
 Download a pre-built binary from the [releases page](https://github.com/volodymyrsmirnov/mcp-bin/releases).
