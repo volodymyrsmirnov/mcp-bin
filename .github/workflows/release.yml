@@ -4,8 +4,12 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths-ignore:
-      - 'Formula/**'
+    paths:
+      - '**.go'
+      - 'go.mod'
+      - 'go.sum'
+      - 'Makefile'
+      - '.github/workflows/release.yml'
 
 concurrency:
   group: release-${{ github.ref }}
