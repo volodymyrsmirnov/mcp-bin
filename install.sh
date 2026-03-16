@@ -67,7 +67,7 @@ main() {
     download_url="https://github.com/${REPO}/releases/download/${version}/${asset}"
 
     tmpfile="$(mktemp)"
-    trap 'rm -f "$tmpfile"' EXIT
+    trap 'rm -f "${tmpfile:-}"' EXIT
 
     info "Downloading $download_url"
     download "$download_url" "$tmpfile"
