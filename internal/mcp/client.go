@@ -100,15 +100,37 @@ func stderrError(err error, stderr io.Reader) error {
 }
 
 func connectRemote(ctx context.Context, cfg config.ServerConfig) (*Client, error) {
-	// Use a short-lived init context for Start + Initialize only.
 	initCtx, initCancel := withDefaultTimeout(ctx, 3*time.Minute)
 	defer initCancel()
 
-	// Always use OAuth-aware transport for remote servers.
-	// If the keychain has a stored token, it gets used automatically.
-	// If the server doesn't require auth, the transport works fine without a token.
-	// If auth is required but no token exists, we return a helpful error.
-	return connectWithOAuth(initCtx, cfg)
+	if cfg.OAuth != nil {
+		return connectWithOAuth(initCtx, cfg)
+	}
+	return connectStreamableHTTP(initCtx, cfg)
+}
+
+func connectStreamableHTTP(ctx context.Context, cfg config.ServerConfig) (*Client, error) {
+	var opts []transport.StreamableHTTPCOption
+	if cfg.Headers != nil {
+		opts = append(opts, transport.WithHTTPHeaders(cfg.Headers))
+	}
+
+	c, err := client.NewStreamableHttpClient(cfg.URL, opts...)
+	if err != nil {
+		return nil, fmt.Errorf("creating HTTP client: %w", err)
+	}
+
+	if err := c.Start(ctx); err != nil {
+		_ = c.Close()
+		return nil, fmt.Errorf("starting HTTP client: %w", err)
+	}
+
+	if err := initialize(ctx, c); err != nil {
+		_ = c.Close()
+		return nil, err
+	}
+
+	return &Client{mcpClient: c}, nil
 }
 
 func connectWithOAuth(ctx context.Context, cfg config.ServerConfig) (*Client, error) {
