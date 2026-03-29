@@ -132,16 +132,15 @@ jobs:
     needs: [version, build, universal, release]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
           merge-multiple: true
 
-      - name: Update Homebrew formulae
+      - name: Update Homebrew tap
         env:
           VERSION: ${{ needs.version.outputs.tag }}
+          GH_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
         run: |
           SHA_OSX=$(sha256sum artifacts/mcp-bin-osx-universal | cut -d' ' -f1)
           SHA_LINUX_AMD64=$(sha256sum artifacts/mcp-bin-linux-amd64 | cut -d' ' -f1)
@@ -149,9 +148,13 @@ jobs:
           REPO="https://github.com/volodymyrsmirnov/mcp-bin/releases/download/${VERSION}"
           SEMVER="${VERSION#v}"
 
-          # Versioned class name: 0.1.5 -> McpBinAT015
           CLASS_SUFFIX=$(echo "$SEMVER" | tr -d '.')
           VERSIONED_CLASS="McpBinAT${CLASS_SUFFIX}"
+
+          git clone https://x-access-token:${GH_TOKEN}@github.com/volodymyrsmirnov/homebrew-tap.git /tmp/homebrew-tap
+          cd /tmp/homebrew-tap
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
 
           mkdir -p Formula
 
@@ -197,11 +200,7 @@ jobs:
           generate_formula "McpBin" "Formula/mcp-bin.rb"
           generate_formula "$VERSIONED_CLASS" "Formula/mcp-bin@${SEMVER}.rb"
 
-      - name: Commit formulae
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
           git add Formula/
           git diff --cached --quiet && exit 0
-          git commit -m "homebrew: mcp-bin ${{ needs.version.outputs.tag }}"
+          git commit -m "Update mcp-bin to $VERSION"
           git push
