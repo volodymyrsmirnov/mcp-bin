@@ -110,6 +110,10 @@ jobs:
   release:
     needs: [version, build, universal]
     runs-on: ubuntu-latest
+    outputs:
+      sha_osx: ${{ steps.checksums.outputs.sha_osx }}
+      sha_linux_amd64: ${{ steps.checksums.outputs.sha_linux_amd64 }}
+      sha_linux_arm64: ${{ steps.checksums.outputs.sha_linux_arm64 }}
     steps:
       - uses: actions/checkout@v4
 
@@ -117,6 +121,13 @@ jobs:
         with:
           path: artifacts
           merge-multiple: true
+
+      - name: Compute checksums
+        id: checksums
+        run: |
+          echo "sha_osx=$(sha256sum artifacts/mcp-bin-osx-universal | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          echo "sha_linux_amd64=$(sha256sum artifacts/mcp-bin-linux-amd64 | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          echo "sha_linux_arm64=$(sha256sum artifacts/mcp-bin-linux-arm64 | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
 
       - name: Create release
         env:
@@ -129,78 +140,22 @@ jobs:
             artifacts/*
 
   homebrew:
-    needs: [version, build, universal, release]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-          merge-multiple: true
-
-      - name: Update Homebrew tap
-        env:
-          VERSION: ${{ needs.version.outputs.tag }}
-          GH_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
-        run: |
-          SHA_OSX=$(sha256sum artifacts/mcp-bin-osx-universal | cut -d' ' -f1)
-          SHA_LINUX_AMD64=$(sha256sum artifacts/mcp-bin-linux-amd64 | cut -d' ' -f1)
-          SHA_LINUX_ARM64=$(sha256sum artifacts/mcp-bin-linux-arm64 | cut -d' ' -f1)
-          REPO="https://github.com/volodymyrsmirnov/mcp-bin/releases/download/${VERSION}"
-          SEMVER="${VERSION#v}"
-
-          CLASS_SUFFIX=$(echo "$SEMVER" | tr -d '.')
-          VERSIONED_CLASS="McpBinAT${CLASS_SUFFIX}"
-
-          git clone https://x-access-token:${GH_TOKEN}@github.com/volodymyrsmirnov/homebrew-tap.git /tmp/homebrew-tap
-          cd /tmp/homebrew-tap
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-          mkdir -p Formula
-
-          generate_formula() {
-            local class_name="$1"
-            local file="$2"
-            cat > "$file" << FORMULA
-          class ${class_name} < Formula
-            desc "Turn MCP server tools into CLI commands"
-            homepage "https://github.com/volodymyrsmirnov/mcp-bin"
-            version "${SEMVER}"
-            license "MIT"
-
-            on_macos do
-              url "${REPO}/mcp-bin-osx-universal"
-              sha256 "${SHA_OSX}"
-            end
-
-            on_linux do
-              on_arm do
-                url "${REPO}/mcp-bin-linux-arm64"
-                sha256 "${SHA_LINUX_ARM64}"
-              end
-              on_intel do
-                url "${REPO}/mcp-bin-linux-amd64"
-                sha256 "${SHA_LINUX_AMD64}"
-              end
-            end
-
-            def install
-              binary = Dir["mcp-bin-*"].first
-              bin.install binary => "mcp-bin"
-            end
-
-            test do
-              assert_match version.to_s, shell_output("#{bin}/mcp-bin --version")
-            end
-          end
-          FORMULA
-            sed -i 's/^          //' "$file"
-          }
-
-          generate_formula "McpBin" "Formula/mcp-bin.rb"
-          generate_formula "$VERSIONED_CLASS" "Formula/mcp-bin@${SEMVER}.rb"
-
-          git add Formula/
-          git diff --cached --quiet && exit 0
-          git commit -m "Update mcp-bin to $VERSION"
-          git push
+    needs: [version, release]
+    uses: volodymyrsmirnov/homebrew-tap/.github/workflows/update.yml@main
+    with:
+      type: formula
+      name: mcp-bin
+      version: ${{ needs.version.outputs.tag }}
+      desc: "Turn MCP server tools into CLI commands"
+      homepage: "https://github.com/volodymyrsmirnov/mcp-bin"
+      macos_url: "https://github.com/volodymyrsmirnov/mcp-bin/releases/download/${{ needs.version.outputs.tag }}/mcp-bin-osx-universal"
+      macos_sha256: ${{ needs.release.outputs.sha_osx }}
+      linux_amd64_url: "https://github.com/volodymyrsmirnov/mcp-bin/releases/download/${{ needs.version.outputs.tag }}/mcp-bin-linux-amd64"
+      linux_amd64_sha256: ${{ needs.release.outputs.sha_linux_amd64 }}
+      linux_arm64_url: "https://github.com/volodymyrsmirnov/mcp-bin/releases/download/${{ needs.version.outputs.tag }}/mcp-bin-linux-arm64"
+      linux_arm64_sha256: ${{ needs.release.outputs.sha_linux_arm64 }}
+      formula_install: |-
+        binary = Dir["mcp-bin-*"].first
+            bin.install binary => "mcp-bin"
+    secrets:
+      tap_token: ${{ secrets.TAP_GITHUB_TOKEN }}
