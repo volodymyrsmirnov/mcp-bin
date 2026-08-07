@@ -154,6 +154,14 @@ MCP tool input schemas are converted to CLI flags:
 - `boolean` → `--flag`
 - `object`/`array` → `--flag '{"key": "value"}'`
 
+A property's type may be declared directly (`"type": "string"`) or through a
+JSON Schema union (`anyOf`/`oneOf`), which is how tools built with
+FastMCP/Pydantic represent `Optional[X]` parameters. Both forms produce the
+same flag. When a union has a `null` branch (the `Optional[X]` case), the
+other branch's type is used. When a union has no `null` branch (a genuine
+`X | Y` choice), the first branch wins — pass the value in that branch's
+form.
+
 ## Compile Command
 
 ```bash

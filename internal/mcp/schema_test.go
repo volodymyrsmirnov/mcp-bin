@@ -60,6 +60,214 @@ func TestParseInputSchemaNullOnlyType(t *testing.T) {
 	}
 }
 
+func TestParseInputSchemaAnyOfOptionalScalar(t *testing.T) {
+	// anyOf[integer, null] is what FastMCP/Pydantic emits for Optional[int].
+	raw := json.RawMessage(`{
+		"type": "object",
+		"properties": {
+			"count": {
+				"anyOf": [{"type": "integer"}, {"type": "null"}],
+				"default": null,
+				"title": "Count"
+			}
+		}
+	}`)
+
+	parsed := ParseInputSchema(raw)
+	got := parsed.Properties["count"]
+	if got.Type != "integer" {
+		t.Errorf("count type: got %q, want %q", got.Type, "integer")
+	}
+}
+
+func TestParseInputSchemaAnyOfOptionalBoolean(t *testing.T) {
+	raw := json.RawMessage(`{
+		"type": "object",
+		"properties": {
+			"verbose": {
+				"anyOf": [{"type": "boolean"}, {"type": "null"}],
+				"default": null
+			}
+		}
+	}`)
+
+	parsed := ParseInputSchema(raw)
+	got := parsed.Properties["verbose"]
+	if got.Type != "boolean" {
+		t.Errorf("verbose type: got %q, want %q", got.Type, "boolean")
+	}
+}
+
+func TestParseInputSchemaAnyOfOptionalArray(t *testing.T) {
+	// An array type reachable only through anyOf must resolve with its
+	// nested items intact, not just the bare "array" type name.
+	raw := json.RawMessage(`{
+		"type": "object",
+		"properties": {
+			"tags": {
+				"anyOf": [
+					{"items": {"type": "string"}, "type": "array"},
+					{"type": "null"}
+				],
+				"default": null,
+				"title": "Tags"
+			}
+		}
+	}`)
+
+	parsed := ParseInputSchema(raw)
+	got := parsed.Properties["tags"]
+	if got.Type != "array" {
+		t.Errorf("tags type: got %q, want %q", got.Type, "array")
+	}
+	if got.Items == nil {
+		t.Fatal("tags.Items is nil")
+	}
+	if got.Items.Type != "string" {
+		t.Errorf("tags.Items.Type: got %q, want %q", got.Items.Type, "string")
+	}
+}
+
+func TestParseInputSchemaAnyOfOptionalObject(t *testing.T) {
+	raw := json.RawMessage(`{
+		"type": "object",
+		"properties": {
+			"config": {
+				"anyOf": [
+					{
+						"type": "object",
+						"properties": {
+							"host": {"type": "string"}
+						}
+					},
+					{"type": "null"}
+				],
+				"default": null
+			}
+		}
+	}`)
+
+	parsed := ParseInputSchema(raw)
+	got := parsed.Properties["config"]
+	if got.Type != "object" {
+		t.Errorf("config type: got %q, want %q", got.Type, "object")
+	}
+	if len(got.Properties) != 1 || got.Properties["host"].Type != "string" {
+		t.Errorf("config.Properties: got %v, want host: string", got.Properties)
+	}
+}
+
+func TestParseInputSchemaOneOfOptional(t *testing.T) {
+	raw := json.RawMessage(`{
+		"type": "object",
+		"properties": {
+			"flag": {
+				"oneOf": [{"type": "boolean"}, {"type": "null"}]
+			}
+		}
+	}`)
+
+	parsed := ParseInputSchema(raw)
+	got := parsed.Properties["flag"]
+	if got.Type != "boolean" {
+		t.Errorf("flag type: got %q, want %q", got.Type, "boolean")
+	}
+}
+
+func TestParseInputSchemaAnyOfNoNullBranch(t *testing.T) {
+	// Genuine unions with no null branch have no unambiguous answer; the
+	// documented precedence is "first branch wins".
+	tests := []struct {
+		name     string
+		raw      json.RawMessage
+		wantType string
+	}{
+		{
+			name: "array or string",
+			raw: json.RawMessage(`{
+				"type": "object",
+				"properties": {
+					"filter": {
+						"anyOf": [
+							{"type": "array", "items": {"type": "string"}},
+							{"type": "string"}
+						]
+					}
+				}
+			}`),
+			wantType: "array",
+		},
+		{
+			name: "object or string",
+			raw: json.RawMessage(`{
+				"type": "object",
+				"properties": {
+					"range": {
+						"anyOf": [
+							{"type": "object", "properties": {"since": {"type": "string"}}},
+							{"type": "string"}
+						]
+					}
+				}
+			}`),
+			wantType: "object",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			parsed := ParseInputSchema(tt.raw)
+			var got PropertyInfo
+			for _, v := range parsed.Properties {
+				got = v
+			}
+			if got.Type != tt.wantType {
+				t.Errorf("type: got %q, want %q", got.Type, tt.wantType)
+			}
+		})
+	}
+}
+
+func TestParseInputSchemaAnyOfDescriptionOverlay(t *testing.T) {
+	// Description declared alongside anyOf (outside the union) takes
+	// precedence over anything declared inside the selected branch.
+	raw := json.RawMessage(`{
+		"type": "object",
+		"properties": {
+			"count": {
+				"anyOf": [{"type": "integer"}, {"type": "null"}],
+				"description": "Outer description"
+			}
+		}
+	}`)
+
+	parsed := ParseInputSchema(raw)
+	got := parsed.Properties["count"]
+	if got.Description != "Outer description" {
+		t.Errorf("description: got %q, want %q", got.Description, "Outer description")
+	}
+}
+
+func TestParseInputSchemaUnhandledRefAndAllOf(t *testing.T) {
+	// $ref and allOf are not resolved; document the fallback rather than
+	// crash or silently mistype the property.
+	raw := json.RawMessage(`{
+		"type": "object",
+		"properties": {
+			"via_ref": {"$ref": "#/$defs/Thing"},
+			"via_allof": {"allOf": [{"type": "string"}]}
+		}
+	}`)
+
+	parsed := ParseInputSchema(raw)
+	if got := parsed.Properties["via_ref"].Type; got != "string" {
+		t.Errorf("via_ref type: got %q, want %q (fallback)", got, "string")
+	}
+	if got := parsed.Properties["via_allof"].Type; got != "string" {
+		t.Errorf("via_allof type: got %q, want %q (fallback)", got, "string")
+	}
+}
+
 func TestParseInputSchemaArrayItems(t *testing.T) {
 	raw := json.RawMessage(`{
 		"type": "object",

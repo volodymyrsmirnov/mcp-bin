@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	ucli "github.com/urfave/cli/v3"
@@ -268,6 +269,35 @@ func TestSchemaToFlags(t *testing.T) {
 	flags := schemaToFlags(schema)
 	if len(flags) != 7 {
 		t.Errorf("expected 7 flags, got %d", len(flags))
+	}
+}
+
+// TestSchemaToFlagsAnyOfArrayUsage asserts --help reports the resolved type
+// for an anyOf-wrapped array property rather than defaulting to "string".
+func TestSchemaToFlagsAnyOfArrayUsage(t *testing.T) {
+	raw := json.RawMessage(`{
+		"type": "object",
+		"properties": {
+			"tags": {
+				"anyOf": [
+					{"items": {"type": "string"}, "type": "array"},
+					{"type": "null"}
+				]
+			}
+		}
+	}`)
+	schema := mcpclient.ParseInputSchema(raw)
+
+	flags := schemaToFlags(schema)
+	if len(flags) != 1 {
+		t.Fatalf("expected 1 flag, got %d", len(flags))
+	}
+	sf, ok := flags[0].(*ucli.StringFlag)
+	if !ok {
+		t.Fatalf("expected *ucli.StringFlag, got %T", flags[0])
+	}
+	if !strings.Contains(sf.Usage, "array[string]") {
+		t.Errorf("usage should report resolved array type, got %q", sf.Usage)
 	}
 }
 
@@ -651,6 +681,128 @@ func TestCollectArgsUnsetFlags(t *testing.T) {
 
 	if len(collected) != 0 {
 		t.Errorf("expected empty args when no flags set, got %v", collected)
+	}
+}
+
+// TestCollectArgsAnyOfArrayRegression checks that an array property declared
+// only inside anyOf[X, null] (the shape FastMCP/Pydantic emits for
+// Optional[List[X]]) lands in the arguments map as a real JSON array, not as
+// a string containing the JSON literal.
+func TestCollectArgsAnyOfArrayRegression(t *testing.T) {
+	raw := json.RawMessage(`{
+		"type": "object",
+		"properties": {
+			"tags": {
+				"anyOf": [
+					{"items": {"type": "string"}, "type": "array"},
+					{"type": "null"}
+				],
+				"default": null,
+				"title": "Tags"
+			}
+		}
+	}`)
+	schema := mcpclient.ParseInputSchema(raw)
+
+	flags := schemaToFlags(schema)
+	var collected map[string]interface{}
+	app := &ucli.Command{
+		Flags: flags,
+		Action: func(ctx context.Context, cmd *ucli.Command) error {
+			collected = collectArgs(cmd, schema)
+			return nil
+		},
+	}
+
+	err := app.Run(context.Background(), []string{"test", "--tags", `["a"]`})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	arr, ok := collected["tags"].([]interface{})
+	if !ok {
+		t.Fatalf("expected []interface{}, got %T: %v", collected["tags"], collected["tags"])
+	}
+	if len(arr) != 1 || arr[0] != "a" {
+		t.Errorf("expected [\"a\"], got %v", arr)
+	}
+}
+
+// TestCollectArgsAnyOfBooleanRegression checks that an anyOf[boolean, null]
+// property resolves to a real toggle BoolFlag, matching top-level
+// type:boolean properties, and sends a real JSON boolean rather than a string.
+func TestCollectArgsAnyOfBooleanRegression(t *testing.T) {
+	raw := json.RawMessage(`{
+		"type": "object",
+		"properties": {
+			"verbose": {
+				"anyOf": [{"type": "boolean"}, {"type": "null"}],
+				"default": null
+			}
+		}
+	}`)
+	schema := mcpclient.ParseInputSchema(raw)
+
+	flags := schemaToFlags(schema)
+	if _, ok := flags[0].(*ucli.BoolFlag); !ok {
+		t.Fatalf("expected *ucli.BoolFlag, got %T", flags[0])
+	}
+
+	var collected map[string]interface{}
+	app := &ucli.Command{
+		Flags: flags,
+		Action: func(ctx context.Context, cmd *ucli.Command) error {
+			collected = collectArgs(cmd, schema)
+			return nil
+		},
+	}
+
+	err := app.Run(context.Background(), []string{"test", "--verbose"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if collected["verbose"] != true {
+		t.Errorf("expected true (bool), got %v (%T)", collected["verbose"], collected["verbose"])
+	}
+}
+
+func TestCheckNoStrayArgsNone(t *testing.T) {
+	app := &ucli.Command{
+		Flags: []ucli.Flag{&ucli.BoolFlag{Name: "dry_run"}},
+	}
+	var err error
+	app.Action = func(ctx context.Context, cmd *ucli.Command) error {
+		err = checkNoStrayArgs(cmd)
+		return nil
+	}
+	if runErr := app.Run(context.Background(), []string{"test", "--dry_run"}); runErr != nil {
+		t.Fatalf("unexpected error: %v", runErr)
+	}
+	if err != nil {
+		t.Errorf("expected no error, got %v", err)
+	}
+}
+
+// TestCheckNoStrayArgsLegacyBoolValue checks that a `--flag true` invocation
+// against a boolean toggle flag surfaces a clear error instead of silently
+// dropping "true" as an ignored positional argument.
+func TestCheckNoStrayArgsLegacyBoolValue(t *testing.T) {
+	app := &ucli.Command{
+		Flags: []ucli.Flag{&ucli.BoolFlag{Name: "dry_run"}},
+	}
+	var err error
+	app.Action = func(ctx context.Context, cmd *ucli.Command) error {
+		err = checkNoStrayArgs(cmd)
+		return nil
+	}
+	if runErr := app.Run(context.Background(), []string{"test", "--dry_run", "true"}); runErr != nil {
+		t.Fatalf("unexpected error: %v", runErr)
+	}
+	if err == nil {
+		t.Fatal("expected an error for stray trailing argument, got nil")
+	}
+	if !strings.Contains(err.Error(), "true") {
+		t.Errorf("expected error to mention the stray argument, got %q", err.Error())
 	}
 }
 
