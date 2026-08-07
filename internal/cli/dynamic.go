@@ -172,6 +172,9 @@ func buildToolCommand(serverName string, serverCfg *config.ServerConfig, tool mc
 				}
 			} else {
 				args = collectArgs(cmd, schema)
+				if err := checkNoStrayArgs(cmd); err != nil {
+					return err
+				}
 			}
 
 			for _, r := range schema.Required {
@@ -294,6 +297,18 @@ func collectArgs(cmd *ucli.Command, schema mcpclient.ParsedSchema) map[string]in
 		}
 	}
 	return args
+}
+
+// checkNoStrayArgs errors if any positional arguments are left over after
+// flag parsing. Boolean flags are toggles and never consume a following
+// token, so a leftover "true"/"false" from a legacy `--flag true` invocation
+// would otherwise be silently dropped instead of surfacing as a clear error.
+func checkNoStrayArgs(cmd *ucli.Command) error {
+	if cmd.Args().Len() == 0 {
+		return nil
+	}
+	return fmt.Errorf("unexpected argument(s): %s (boolean flags are toggles and take no value, e.g. --dry_run not --dry_run true)",
+		strings.Join(cmd.Args().Slice(), " "))
 }
 
 // parseToolArgs parses --flag value pairs from raw args for dev mode.
