@@ -1,5 +1,7 @@
 # mcp-bin
 
+> 📝 Blog post: [Calling MCP tools from the terminal with mcp-bin](https://volodymyr.smirnov.im/writing/mcp-bin/)
+
 Turn MCP server tools into CLI commands. Compile into a single self-contained binary.
 
 ## Install
